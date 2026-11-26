@@ -27,7 +27,7 @@
 
 ## Download
 
-Grab one of the two standalone Windows x64 executables from the [latest release](/releases/latest). No installer or archive is required — just run the EXE.
+Grab one of the two standalone Windows x64 executables from the [latest release](https://github.com/frame18studios/VI-Mod-Manager/releases/latest). No installer or archive is required — just run the EXE. They are also available directly in the [`publish/` folder](publish/) of this repository.
 
 | File | Size | Requirements |
 | --- | --- | --- |
@@ -118,7 +118,7 @@ dotnet test tests/ViModManager.Tests.csproj -c Release --nologo
 dotnet run --project src/ViModManager.csproj
 ```
 
-Release builds place exactly two standalone EXEs and `SHA256SUMS.txt` in the flat `publish/` folder. Full instructions are in [BUILDING.md](BUILDING.md).
+Release builds place exactly two standalone EXEs and `SHA256SUMS.txt` in the flat `publish/` folder. Those files are committed here so you can also download them directly from the repository. Full instructions are in [BUILDING.md](BUILDING.md).
 
 ---
 

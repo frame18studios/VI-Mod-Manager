@@ -6,7 +6,7 @@ Release date: 2026-11-27
 
 **VI Mod Manager v0.1 (experimental)** is a general-purpose, local-first package library and reversible file-deployment workbench for Windows, built with **.NET 10** and **Avalonia 11**.
 
-> **Independent tool.** VI Mod Manager is not affiliated with, authorized by, or endorsed by any game publisher or developer. This release contains no mods, game files, or game assets, and it does not bypass DRM, license checks, or anti-cheat systems. It bundles open-source libraries; the portable build also includes the .NET runtime. See `DISCLAIMER.md` and `THIRD-PARTY-NOTICES.md` in the repository.
+> **Independent tool.** VI Mod Manager is not affiliated with, authorized by, or endorsed by any game publisher or developer. This release contains no mods, game files, or game assets, and it does not bypass DRM, license checks, or anti-cheat systems. It bundles open-source libraries; the portable build also includes the .NET runtime. See [DISCLAIMER.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/DISCLAIMER.md) and [THIRD-PARTY-NOTICES.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/THIRD-PARTY-NOTICES.md) in the repository.
 
 ## Downloads
 
@@ -37,4 +37,4 @@ Two standalone Windows x64 executables. No ZIP archives and no installer.
 
 ## License and legal scope
 
-The original source code is released under the [MIT License](LICENSE). Third-party components retain their own terms; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The MIT License does not grant rights to any third-party mods, assets, or game content. See [DISCLAIMER.md](DISCLAIMER.md) for the project's scope, user responsibilities, and notice-and-takedown process.
+The original source code is released under the [MIT License](https://github.com/frame18studios/VI-Mod-Manager/blob/main/LICENSE). Third-party components retain their own terms; see [THIRD-PARTY-NOTICES.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/THIRD-PARTY-NOTICES.md). The MIT License does not grant rights to any third-party mods, assets, or game content. See [DISCLAIMER.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/DISCLAIMER.md) for the project's scope, user responsibilities, and notice-and-takedown process.

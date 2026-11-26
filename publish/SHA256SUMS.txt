@@ -1,0 +1,2 @@
+68ebbfe58ec1cb4e637b54794d3634fda210df72a5d83f7a0d2a864d4ca0ec1c  ViModManager.exe
+5391bf1b3ed182010eaa6bcf99f74ac56837c4c5058eb91ddde55ee8fd61d6f5  ViModManager-light.exe

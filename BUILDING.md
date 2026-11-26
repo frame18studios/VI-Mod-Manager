@@ -49,7 +49,7 @@ dotnet publish src/ViModManager.csproj -c Release -r win-x64 `
 
 ### Stage the flat release folder
 
-`publish/` contains only the two EXEs and the checksum file. It is ignored by Git; release assets are uploaded through GitHub Releases.
+`publish/` contains only the two EXEs and the checksum file. These three files are committed to the repository and are also uploaded as GitHub release assets.
 
 ```powershell
 New-Item -ItemType Directory -Force publish | Out-Null
@@ -76,7 +76,7 @@ The GitHub Actions workflow in `.github/workflows/windows-exe.yml`:
 5. Uploads the two EXEs and the checksum file as build artifacts.
 6. On a `v*` tag, creates a GitHub release with those files and the contents of `RELEASE_NOTES.md`.
 
-Do not commit build outputs or release binaries. `bin/`, `obj/`, and `publish/` are generated and ignored by Git. Publish releases through GitHub Releases instead.
+`bin/` and `obj/` are generated build caches and are ignored by Git. The three release files in `publish/` are committed; the workflow regenerates and overwrites them from source on every build.
 
 Release assets must contain only the two built EXEs and the checksum file. Do not add game files, mods, third-party assets, or user packages to a release.
 
@@ -115,7 +115,7 @@ tests/
 examples/                 Harmless text/JSON demo package (example-package-demo.zip)
 docs/                     Manifest and package-format documentation
 .github/workflows/        Windows EXE build and release workflow
-publish/                  Local release output: ViModManager.exe, ViModManager-light.exe, SHA256SUMS.txt (ignored by Git)
+publish/                  Committed release files: ViModManager.exe, ViModManager-light.exe, SHA256SUMS.txt
 THIRD-PARTY-NOTICES.md    Dependency versions and upstream license references
 ```
 
