@@ -49,7 +49,7 @@ dotnet publish src/ViModManager.csproj -c Release -r win-x64 `
 
 ### Stage the flat release folder
 
-`publish/` contains only the two EXEs and the checksum file. These three files are committed to the repository and are also uploaded as GitHub release assets.
+`publish/` contains only the two EXEs and the checksum file. Committed copies are provided for direct download; a tagged release rebuilds from source and uploads the authoritative assets. Verify each download against the checksum file shipped with it.
 
 ```powershell
 New-Item -ItemType Directory -Force publish | Out-Null
