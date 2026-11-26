@@ -1,0 +1,60 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ViModManager.App"
+             RequestedThemeVariant="Dark">
+
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://ViModManager/Theme.axaml" />
+  </Application.Styles>
+
+  <Application.Resources>
+    <!-- Core palette (Nocturne pink dark mode defaults; dynamically updated by ThemeManager) -->
+    <SolidColorBrush x:Key="BgBrush" Color="#0D0912" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#150F1C" />
+    <SolidColorBrush x:Key="PanelBrush" Color="#1D1526" />
+    <SolidColorBrush x:Key="PanelHoverBrush" Color="#281D34" />
+    <SolidColorBrush x:Key="FieldBrush" Color="#120C18" />
+    <SolidColorBrush x:Key="InsetBrush" Color="#0A070E" />
+
+    <SolidColorBrush x:Key="TextBrush" Color="#FAF4FC" />
+    <SolidColorBrush x:Key="MutedBrush" Color="#B4A3C0" />
+
+    <SolidColorBrush x:Key="AccentBrush" Color="#FF5CA8" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#FF7EC0" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="#DE3F8A" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#29FF5CA8" />
+    <SolidColorBrush x:Key="AccentSofterBrush" Color="#12FF5CA8" />
+    <SolidColorBrush x:Key="AccentLineBrush" Color="#66FF5CA8" />
+    <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
+
+    <SolidColorBrush x:Key="LineBrush" Color="#1AF8ECFC" />
+    <SolidColorBrush x:Key="LineStrongBrush" Color="#33F8ECFC" />
+
+    <SolidColorBrush x:Key="DangerBrush" Color="#FF6B8B" />
+    <SolidColorBrush x:Key="DangerSoftBrush" Color="#24FF6B8B" />
+    <SolidColorBrush x:Key="GoodBrush" Color="#6CE5A8" />
+    <SolidColorBrush x:Key="GoodSoftBrush" Color="#216CE5A8" />
+    <SolidColorBrush x:Key="WarnBrush" Color="#FFB86C" />
+    <SolidColorBrush x:Key="WarnSoftBrush" Color="#24FFB86C" />
+
+    <LinearGradientBrush x:Key="HeroBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+      <GradientStop Offset="0" Color="#2A1833" />
+      <GradientStop Offset="1" Color="#1A1224" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+      <GradientStop Offset="0" Color="#FF7AC2" />
+      <GradientStop Offset="1" Color="#E83B92" />
+    </LinearGradientBrush>
+
+    <!-- Typography baseline and dynamic corner-radius tokens -->
+    <x:Double x:Key="BaseFontSize">13</x:Double>
+    <CornerRadius x:Key="SidebarRadius">22</CornerRadius>
+    <CornerRadius x:Key="HeroRadius">22</CornerRadius>
+    <CornerRadius x:Key="PanelRadius">18</CornerRadius>
+    <CornerRadius x:Key="CardRadius">15</CornerRadius>
+    <CornerRadius x:Key="ControlRadius">12</CornerRadius>
+    <CornerRadius x:Key="ChipRadius">9</CornerRadius>
+  </Application.Resources>
+
+</Application>

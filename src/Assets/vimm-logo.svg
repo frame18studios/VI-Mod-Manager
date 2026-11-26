@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img">
+  <title>VI Mod Manager logo</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2D1936"/>
+      <stop offset="100%" stop-color="#140B1C"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FF85C2"/>
+      <stop offset="100%" stop-color="#F23892"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FF78BA" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#9B3D78" stop-opacity="0.35"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#bg)" stroke="url(#ring)" stroke-width="2"/>
+  <rect x="14" y="14" width="36" height="9" rx="4.5" fill="url(#accent)"/>
+  <rect x="21" y="27.5" width="29" height="9" rx="4.5" fill="#FAF2FC"/>
+  <rect x="12" y="41" width="36" height="9" rx="4.5" fill="url(#accent)"/>
+</svg>

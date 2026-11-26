@@ -1,0 +1,15 @@
+# Runtime data written beside the executable
+data/*.json
+**/data/
+**/mods/
+**/backups/
+
+# .NET / Avalonia build caches
+bin/
+obj/
+.vs/
+*.user
+*.suo
+TestResults/
+build/
+publish/

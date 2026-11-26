@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>ViModManager</AssemblyName>
+    <RootNamespace>ViModManager</RootNamespace>
+    <Product>VI Mod Manager</Product>
+    <Version>0.1.0</Version>
+    <Description>General-purpose local package library and reversible file-deployment workbench.</Description>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationIcon>Assets/vimm-icon.ico</ApplicationIcon>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <!-- MainWindow is created through DI with AppServices; the runtime XAML loader is not used. -->
+    <NoWarn>$(NoWarn);AVLN3001</NoWarn>
+
+    <!-- Release shape: two single-file Windows EXEs (self-contained portable + framework-dependent
+         light). Trimming stays off: Avalonia/XAML discovery is reflection-sensitive and feature
+         loss is not worth a few MB. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.23" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.23" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.23" />
+  </ItemGroup>
+
+</Project>
