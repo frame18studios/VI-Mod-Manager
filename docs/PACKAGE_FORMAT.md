@@ -2,7 +2,7 @@
 
 VI Mod Manager treats package payloads as data. It does not execute them or inspect proprietary binary containers. An optional plain-JSON manifest named **`vmm-manifest.json`** at the root of a `.zip` archive (or unpacked folder) provides metadata, typed settings, and explicit file mappings. The older `vi-mod.json` name remains supported for existing packages; if both names are present, `vmm-manifest.json` takes precedence.
 
-> **Responsible use:** Packages are supplied by you. Only import and deploy content you have the rights to use, and follow the terms that apply to the target software. VI Mod Manager does not host, download, or bundle packages, and does not bypass DRM, license checks, or anti-cheat systems. See [DISCLAIMER.md](../DISCLAIMER.md).
+> **Responsible use:** Packages are supplied by you. Only import and deploy content you have the rights to use, and follow the terms that apply to the target software. VI Mod Manager does not host, download, or bundle third-party packages; the only bundled package is the original demo described below. It does not bypass DRM, license checks, or anti-cheat systems. See [DISCLAIMER.md](../DISCLAIMER.md).
 
 ---
 
@@ -23,19 +23,54 @@ VI Mod Manager treats package payloads as data. It does not execute them or insp
   "id": "example-package-demo",
   "name": "Example Package Demo",
   "version": "1.0.0",
-  "author": "Package Author",
-  "description": "Harmless demo package for exercising the editor and deploy flow.",
+  "author": "VI Mod Manager",
+  "description": "A harmless demo package for testing the values editor, load order, and reversible deploy/unload flow. Writes only demo text files and a generated JSON config.",
   "kind": "Config",
   "settings": [
-    { "key": "scale", "label": "Scale", "type": "float", "default": 1.0, "min": 0.5, "max": 2.0, "step": 0.1 },
-    { "key": "preset", "label": "Preset", "type": "choice", "options": ["relaxed", "standard", "focused"] },
-    { "key": "show_debug", "label": "Show debug", "type": "bool", "default": false },
-    { "key": "item_count", "label": "Item count", "type": "int", "default": 4, "min": 1, "max": 32 },
-    { "key": "label", "label": "Label", "type": "text", "default": "demo" }
+    {
+      "key": "scale",
+      "label": "Scale",
+      "type": "float",
+      "default": 1.0,
+      "min": 0.1,
+      "max": 10.0,
+      "step": 0.1,
+      "description": "A numeric value with a bounded range."
+    },
+    {
+      "key": "preset",
+      "label": "Preset",
+      "type": "choice",
+      "options": ["relaxed", "standard", "focused"],
+      "default": "standard",
+      "description": "Preset stored in the generated config."
+    },
+    {
+      "key": "show_debug",
+      "label": "Show debug note",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "key": "item_count",
+      "label": "Item count",
+      "type": "int",
+      "default": 25,
+      "min": 1,
+      "max": 200,
+      "step": 5
+    },
+    {
+      "key": "label",
+      "label": "Save label",
+      "type": "text",
+      "default": "Example Run"
+    }
   ],
   "config": { "file": "packages/example-package-demo/settings.json" },
   "files": [
-    { "source": "payload/install-note.txt", "destination": "packages/example-package-demo/install-note.txt" }
+    { "source": "payload/install-note.txt", "destination": "packages/example-package-demo/install-note.txt" },
+    { "source": "payload/demo-info.json", "destination": "packages/example-package-demo/demo-info.json" }
   ]
 }
 ```
@@ -62,11 +97,11 @@ Packages created with the earlier `vi-mod.json` filename continue to import. New
 
 | Type | Control | Supported Properties |
 | --- | --- | --- |
-| `bool` | Toggle switch | `default` |
-| `int` | Integer stepper | `default`, `min`, `max`, `step` |
-| `float` | Decimal stepper | `default`, `min`, `max`, `step` |
-| `choice` | Dropdown | `options`, `default` |
-| `text` | Text box | `default` |
+| `bool` | Toggle switch | `default`, `description` |
+| `int` | Integer stepper | `default`, `min`, `max`, `step`, `description` |
+| `float` | Decimal stepper | `default`, `min`, `max`, `step`, `description` |
+| `choice` | Dropdown | `options`, `default`, `description` |
+| `text` | Text box | `default`, `description` |
 
 Custom key/value string entries can also be added to any package directly in the Library UI.
 
@@ -88,4 +123,4 @@ Every relative path (`files[].source`, `files[].destination`, `config.file`, and
 
 Before replacing any existing file in the target folder, VI Mod Manager copies the original into `backups/<install-id>/` and records the deployed file's SHA-256 hash. On unload, backups are restored only if the deployed file has not been modified outside the manager.
 
-See [`examples/example-package-demo.zip`](../examples/example-package-demo.zip) for a complete reference package.
+The manifest above is the exact manifest used by [`examples/example-package-demo.zip`](../examples/example-package-demo.zip), a harmless text-and-JSON reference package.

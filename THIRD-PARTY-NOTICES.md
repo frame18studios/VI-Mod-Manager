@@ -17,6 +17,7 @@ VI Mod Manager is licensed under the MIT License in [LICENSE](LICENSE). The appl
 - The self-contained **portable EXE** includes the .NET 10 runtime. Its license and third-party notices are maintained by Microsoft in the [.NET runtime repository](https://github.com/dotnet/runtime/tree/release/10.0).
 - The **light EXE** requires the .NET 10 Desktop Runtime to be installed separately by the user. That runtime is governed by Microsoft's terms.
 - `Microsoft.NET.ILLink.Tasks` is used during build and is not included as an application runtime dependency.
+- `Avalonia.BuildServices` and the .NET SDK are build-time tools. Their telemetry runs only during development/build, not in the shipped EXEs. Set `DOTNET_CLI_TELEMETRY_OPTOUT=1` to opt out of .NET SDK telemetry when building.
 
 Only the Windows x64 runtime assets are copied into the published EXEs. RID-specific packages for Linux, macOS, and WebAssembly are resolved during restore but are not shipped in the Windows release.
 

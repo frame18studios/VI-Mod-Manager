@@ -4,13 +4,13 @@ Release date: 2026-11-27
 
 ## Overview
 
-**VI Mod Manager v0.1 (experimental)** is a general-purpose, local-first package library and reversible file-deployment workbench for Windows, built with **.NET 10** and **Avalonia 11**.
+**VI Mod Manager v0.1 (experimental)** is a general-purpose, local-first package library and reversible file-deployment workbench for Windows, built with **.NET 10** and **Avalonia 11**. It is published as a normal GitHub release so the `/releases/latest` link works; treat it as an early build rather than a finished product.
 
 > **Independent tool.** VI Mod Manager is not affiliated with, authorized by, or endorsed by any game publisher or developer. This release contains no mods, game files, or game assets, and it does not bypass DRM, license checks, or anti-cheat systems. It bundles open-source libraries; the portable build also includes the .NET runtime. See [DISCLAIMER.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/DISCLAIMER.md) and [THIRD-PARTY-NOTICES.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/THIRD-PARTY-NOTICES.md) in the repository.
 
 ## Downloads
 
-Two standalone Windows x64 executables. No ZIP archives and no installer.
+Two standalone Windows x64 executables. No distribution ZIP archive and no installer.
 
 | File | Type | Notes |
 | --- | --- | --- |

@@ -31,7 +31,7 @@ The application does **not**:
 - Decrypt, unpack, modify, or bypass proprietary containers, DRM, license checks, or anti-cheat systems.
 - Inspect, patch, or interact with a game's memory, process, network traffic, or online services.
 - Provide cheat, piracy, account, or access-control functionality.
-- Send telemetry or require an online account.
+- Send runtime telemetry or require an online account.
 - Collect, transmit, or sell personal data.
 
 ## 3. Third-party content and user responsibility
@@ -55,11 +55,12 @@ References to file formats, folders, or generic workflows are provided for inter
 
 ## 5. Notice and takedown
 
-This repository does not host user packages. If you believe that material in this repository or its release assets infringes your rights, please open an issue titled **Takedown request** in the repository's issue tracker, or use the contact method listed on the maintainers' GitHub profile. Include:
+This repository does not host user packages. If you believe that material in this repository or its release assets infringes your rights, use the private reporting channel described in [SECURITY.md](SECURITY.md). Do not post personal contact details in a public issue. Include:
 
 - The material you believe is infringing and its location.
 - The right you believe is infringed.
-- Your contact information and a statement that you are authorized to act for the rights holder.
+- A statement that you are authorized to act for the rights holder.
+- Your contact details, sent privately through that channel.
 
 Maintainers will review the request and remove or disable access to material where appropriate. Please only submit claims you are authorized to make.
 

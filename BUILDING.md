@@ -69,7 +69,7 @@ Get-ChildItem publish/*.exe | ForEach-Object {
 
 The GitHub Actions workflow in `.github/workflows/windows-exe.yml`:
 
-1. Restores, builds, and runs the test suite.
+1. Restores dependencies and runs the test suite, which builds the projects.
 2. Publishes both EXEs.
 3. Names them `ViModManager.exe` (self-contained) and `ViModManager-light.exe` (framework-dependent).
 4. Writes `publish/SHA256SUMS.txt`.
@@ -99,7 +99,7 @@ src/
   Core/                   Deployment engine, manifest parser, path safety, package reader, JSON store
   Models/                 Settings, package records, config schema, profiles, history
   Views/                  Main window shell, vector icons, shared UI factory, dialogs
-  Views/Pages/            Overview, Library, Load Order, Profiles, Target, History, Customization
+  Views/Pages/            Dashboard, Library, Load Order, Profiles, Target, History, Settings
   Views/ColorWheelControl.cs  Circular palette-token color selector
   App.axaml               Resource tokens and default Nocturne palette
   App.axaml.cs            Application startup

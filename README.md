@@ -62,7 +62,7 @@ Try the workflow safely with [`examples/example-package-demo.zip`](examples/exam
 - **Customization** — 7 curated themes, a circular palette-token color selector, corner styles (`Sharp`, `Balanced`, `Rounded`, `Soft`), and a live text-size control.
 - **Path safety** — rejects empty, absolute, drive-prefixed, and `..`-traversal paths, and skips symlinks and junctions.
 - **No package execution** — payload files are copied as opaque bytes; manifests are read as plain JSON.
-- **Local only** — no telemetry, no network calls, no auto-updater, and no account requirement.
+- **Local only** — no runtime telemetry, no network calls, no auto-updater, and no account requirement. Build-time tooling is described in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ---
 
@@ -132,6 +132,7 @@ Release builds place exactly two standalone EXEs and `SHA256SUMS.txt` in the fla
 | [DISCLAIMER.md](DISCLAIMER.md) | Independence notice, scope boundaries, user responsibility, and notice-and-takedown |
 | [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) | Open-source libraries and license references included in builds |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines, IP hygiene, and licensing of contributions |
+| [SECURITY.md](SECURITY.md) | Private vulnerability reporting and takedown requests |
 
 ---
 
@@ -143,7 +144,7 @@ Release builds place exactly two standalone EXEs and `SHA256SUMS.txt` in the fla
 - **No hosted content:** This repository and its releases do not host user packages.
 - **No circumvention:** The app does not bypass DRM, license checks, anti-cheat, or access controls.
 - **User responsibility:** Only import and deploy content you have the rights to use, and follow the terms that apply to the target software.
-- **Notice and takedown:** If you believe material in this repository or its release assets infringes your rights, see the process in [DISCLAIMER.md](DISCLAIMER.md).
+- **Notice and takedown:** If you believe material in this repository or its release assets infringes your rights, use the private process in [SECURITY.md](SECURITY.md).
 
 This section is a summary, not legal advice.
 

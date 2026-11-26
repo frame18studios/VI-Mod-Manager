@@ -22,7 +22,7 @@ To keep this project maintainable, portable, and rights-aware:
 - **Keep the engine generic.** Features should work on arbitrary files and folders without hardcoding third-party executables, proprietary container parsers, DRM/anti-cheat bypasses, or platform-specific workarounds.
 - **Preserve path safety.** All package operations must validate relative paths via `Paths.SafeRelative` and `Paths.ResolveWithin`, and must avoid following symlinks or junctions.
 - **Preserve package compatibility.** Keep support for the legacy `vi-mod.json` manifest name unless a documented migration is added.
-- **Do not add network or telemetry features** without a documented privacy review. The current app is local-only.
+- **Do not add network or runtime telemetry features** without a documented privacy review. The current app makes no network calls at runtime and collects no runtime telemetry; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for build-time tooling.
 - **Verify tests.** Run `dotnet test tests/ViModManager.Tests.csproj -c Release --nologo` and report any warnings or errors before opening a pull request.
 
 ## Licensing of contributions
