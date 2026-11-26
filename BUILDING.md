@@ -4,7 +4,7 @@ VI Mod Manager targets **.NET 10** with **Avalonia 11**.
 
 ## Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) — use **10.0.404** to reproduce the committed release EXEs byte-for-byte
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - Windows x64 for the release build (Avalonia desktop application)
 
 ## Build and test
@@ -21,7 +21,7 @@ dotnet test tests/ViModManager.Tests.csproj -c Release --nologo
 
 The release ships exactly two standalone EXEs: a self-contained portable build and a smaller framework-dependent build. No ZIP archives are produced.
 
-> **Important:** Keep `<PublishTrimmed>false</PublishTrimmed>` enabled. Avalonia XAML discovery relies on reflection, so trimming can break UI controls. The project also excludes the Git commit hash from assembly metadata so the committed `publish/` files stay byte-for-byte reproducible across commits and tags.
+> **Important:** Keep `<PublishTrimmed>false</PublishTrimmed>` enabled. Avalonia XAML discovery relies on reflection, so trimming can break UI controls. The project also excludes the Git commit hash from assembly metadata so rebuilds with the same SDK are reproducible across commits and tags.
 
 ### Portable build (self-contained, ~45 MB EXE)
 
