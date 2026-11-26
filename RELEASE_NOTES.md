@@ -17,7 +17,7 @@ Two standalone Windows x64 executables. No ZIP archives and no installer.
 | `ViModManager.exe` | Self-contained | Includes the .NET 10 runtime (~45 MB). Runs on Windows x64 without prerequisites. |
 | `ViModManager-light.exe` | Framework-dependent | Compact (~25 MB). Requires the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0). |
 
-`SHA256SUMS.txt` is published with the release. Verify a download before running it. The executables are currently unsigned, so Windows SmartScreen may show an unknown-publisher prompt on first launch.
+The same three files are committed in the repository's [`publish/` folder](https://github.com/frame18studios/VI-Mod-Manager/tree/main/publish) for direct download. `SHA256SUMS.txt` is published with the release; verify a download before running it. The executables are currently unsigned, so Windows SmartScreen may show an unknown-publisher prompt on first launch.
 
 ## Highlights
 

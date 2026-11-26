@@ -76,7 +76,7 @@ The GitHub Actions workflow in `.github/workflows/windows-exe.yml`:
 5. Uploads the two EXEs and the checksum file as build artifacts.
 6. On a `v*` tag, creates a GitHub release with those files and the contents of `RELEASE_NOTES.md`.
 
-`bin/` and `obj/` are generated build caches and are ignored by Git. The three release files in `publish/` are committed; the workflow regenerates and overwrites them from source on every build.
+`bin/` and `obj/` are generated build caches and are ignored by Git. The three release files in `publish/` are committed for direct download. When publishing a tagged release, the workflow builds fresh EXEs from source and uploads those assets; it does not push generated binaries back to the branch.
 
 Release assets must contain only the two built EXEs and the checksum file. Do not add game files, mods, third-party assets, or user packages to a release.
 
