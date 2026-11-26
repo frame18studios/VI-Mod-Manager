@@ -34,9 +34,22 @@ Grab one of the two standalone Windows x64 executables from the [latest release]
 | `ViModManager.exe` | ~45 MB | None — self-contained, includes the .NET 10 runtime. |
 | `ViModManager-light.exe` | ~25 MB | [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) must already be installed. |
 
-Both files are unsigned, so Windows SmartScreen may show an "unknown publisher" prompt on first launch. Verify the download against `SHA256SUMS.txt` in the same release.
+The current `v0.1` files are unsigned, so Windows SmartScreen may show an "unknown publisher" prompt on first launch. Verify the download against `SHA256SUMS.txt` in the same release.
 
 > **Where to put it:** Run the EXE from any writable folder. Avoid `Program Files` or other protected locations. On first launch the app creates `data/`, `mods/`, and `backups/` beside the EXE, or under `VIMM_DATA_ROOT` (or `VMM_DATA_ROOT`) if that variable is set.
+
+---
+
+## Code signing policy
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation.
+
+- **Committers and reviewers:** `frame18studios`
+- **Approvers:** `frame18studios`
+
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
+The SignPath Foundation application is pending; `v0.1` is unsigned. Once approved, future release EXEs will be signed through SignPath.io, and `SHA256SUMS.txt` will be generated after signing.
 
 ---
 

@@ -19,6 +19,17 @@ Two standalone Windows x64 executables. No distribution ZIP archive and no insta
 
 Copies are also committed in the repository's [`publish/` folder](https://github.com/frame18studios/VI-Mod-Manager/tree/main/publish) for direct download; the release assets are the authoritative builds. `SHA256SUMS.txt` is published with the release; verify a download before running it. The executables are currently unsigned, so Windows SmartScreen may show an unknown-publisher prompt on first launch.
 
+## Code signing policy
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation.
+
+- **Committers and reviewers:** `frame18studios`
+- **Approvers:** `frame18studios`
+
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
+The SignPath Foundation application is pending; `v0.1` is unsigned. Once approved, future release EXEs will be signed through SignPath.io, and `SHA256SUMS.txt` will be generated after signing.
+
 ## Highlights
 
 - **Modern Nocturne dark UI** — dark plum and hot-pink interface with a neutral modular mark, vector icons, and a clean workspace hierarchy.
@@ -33,7 +44,7 @@ Copies are also committed in the repository's [`publish/` folder](https://github
 
 - Experimental `v0.1` release. The app is designed for local file management only: no network downloads, no auto-updater, and no telemetry.
 - Published binaries target Windows x64. Runtime data (`data/`, `mods/`, `backups/`) is created beside the EXE on first launch, or under `VIMM_DATA_ROOT` / `VMM_DATA_ROOT` if set.
-- The executables are unsigned. Verify `SHA256SUMS.txt` and use Windows SmartScreen's "More info" option only if you trust the source.
+- The `v0.1` executables are unsigned. Verify `SHA256SUMS.txt` and use Windows SmartScreen's "More info" option only if you trust the source.
 
 ## License and legal scope
 
