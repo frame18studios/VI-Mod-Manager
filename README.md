@@ -5,31 +5,22 @@
 <h1 align="center">VI Mod Manager</h1>
 
 <p align="center">
-  <strong>Open Source · MIT Licensed · Windows</strong><br />
-  An independent, open-source GTA VI mod manager.
+  An independent, open-source GTA VI mod manager for Windows.
 </p>
 
 <p align="center">
-  Built to simplify mod organization, installation, configuration, and customization, with a long-term vision of making GTA VI modding more accessible through automated asset handling, editing, and mod generation.
-</p>
-
-<p align="center">
-  <img alt="Open source" src="https://img.shields.io/badge/open--source-yes-2ea44f" />
   <img alt=".NET 10" src="https://img.shields.io/badge/.NET-10.0-512BD4" />
   <img alt="Avalonia 11" src="https://img.shields.io/badge/Avalonia-11-8B44AC" />
   <img alt="Windows x64" src="https://img.shields.io/badge/platform-Windows%20x64-0078D4" />
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-FF5CA8" />
   <img alt="v0.2" src="https://img.shields.io/badge/version-v0.2-FF5CA8" />
-  <img alt="Status: experimental" src="https://img.shields.io/badge/status-experimental-FFB86C" />
 </p>
 
-> **Independent community project.** Not affiliated with, endorsed by, sponsored by, or authorized by Rockstar Games or Take-Two Interactive. "Grand Theft Auto VI" and "GTA VI" are used only to describe the project's intended focus; those marks belong to their respective owners. No endorsement, partnership, compatibility, or support is claimed.
+> **Independent community project.** Not affiliated with, endorsed by, sponsored by, or authorized by Rockstar Games or Take-Two Interactive. "Grand Theft Auto VI" and "GTA VI" are trademarks of their respective owners; references describe project direction only and claim no endorsement, compatibility, or support.
 >
-> **Current release: v0.2 Experimental.** VI Mod Manager currently provides generic package management and reversible file deployment to user-selected folders. GTA VI-specific game detection, RPF support, asset editing, mod discovery, and automatic mod generation are planned for future releases and are **not** included in v0.2.
+> **v0.2 is experimental.** It provides generic package management and reversible file deployment to user-selected folders. Game detection, RPF support, asset editing, mod discovery, and automatic mod generation are planned for future releases and are **not** included in v0.2.
 >
-> **No third-party game content is hosted, bundled, or linked.** This repository and its releases contain no mods, game files, game assets, or links to third-party mod downloads. The only bundled package is an original text-and-JSON demo. You supply your own packages and are responsible for having the rights to use them.
->
-> **No DRM or anti-cheat bypass.** The app copies files as data. It does not execute package code, decrypt content, inspect proprietary game containers, or interact with online services.
+> **No game content or bypasses.** This repository and its releases contain no mods, game files, game assets, or mod-download links. The app copies files as data; it does not execute package code, inspect proprietary containers, or bypass DRM/anti-cheat. You supply your own packages and are responsible for your rights to use them.
 
 ---
 
