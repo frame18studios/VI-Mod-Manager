@@ -40,6 +40,10 @@ The SignPath Foundation application is still pending. Until it is approved, VI M
 - **Improved cache fingerprint** — length, timestamps, and cheap head/tail samples detect same-size rewrites without hashing a multi-gigabyte archive on every UI refresh.
 - **Local audit log** — deployment, recovery, and error events are written to `data/logs/vimm.log`. Nothing is transmitted and no telemetry is collected.
 - **Redesigned safety surface** — the overview explains the v0.2 guarantees, long operations show live progress, hash verification no longer blocks the UI, and Settings exposes the build version and log location.
+- **Failure-injection coverage** — tests now exercise corrupt journals, committed installs with tampered files, missing backups, journal retry blocking, and wide directories.
+- **Layered core seam** — dedicated library, deployment, configuration, and profile services plus a UI-agnostic main ViewModel make the app easier to test without changing the established UI.
+- **Format-neutral target adapters** — a single local-folder adapter resolves deployment targets. There is no game detection, executable-name matching, or proprietary-format handling.
+- **Uncapped directory preview** — the target folder scan counts every top-level file and folder instead of truncating at arbitrary display limits.
 
 ## Known limits
 

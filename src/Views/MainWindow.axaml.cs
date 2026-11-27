@@ -12,6 +12,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ViModManager.Core;
 using ViModManager.Models;
+using ViModManager.ViewModels;
 
 namespace ViModManager.Views;
 
@@ -29,6 +30,7 @@ public partial class MainWindow : Window
     };
 
     private readonly AppServices _services;
+    private readonly MainViewModel _viewModel;
     private readonly Dictionary<int, Control> _pages = new();
     private readonly Dictionary<int, Func<Control>> _pageBuilders = new();
     private readonly List<ToggleButton> _navButtons = new();
@@ -98,6 +100,7 @@ public partial class MainWindow : Window
     public MainWindow(AppServices services)
     {
         _services = services;
+        _viewModel = services.ViewModel;
         InitializeComponent();
         RootGrid.Margin = new Thickness(16);
         BuildUi();

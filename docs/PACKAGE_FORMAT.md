@@ -123,6 +123,8 @@ Every relative path (`files[].source`, `files[].destination`, `config.file`, and
 - Passes through an existing symbolic link or junction inside the target folder;
 - Duplicates another destination in the same package, including the generated `config.file` destination (compared case-insensitively, as Windows does).
 
+The selected target is resolved through a generic local-folder adapter. The manager never identifies a game or application, never matches executable names, and never opens proprietary containers; it only describes and writes into an ordinary directory.
+
 ZIP archives are checked only for structural ambiguity: duplicate entry names are rejected because they would make a destination plan ambiguous. There are no artificial compressed-size, expanded-size, per-entry, entry-count, manifest-size, or compression-ratio caps. Payload bytes stream directly to disk, so a 70 GB asset is handled the same way as a small file, subject only to available disk space and the filesystem. Manifests are read as UTF-8 JSON; a manifest that is not valid JSON is rejected without executing anything.
 
 Before replacing any existing file in the target folder, VI Mod Manager copies the original into `backups/<install-id>/` and records both the original backup hash and the deployed file's SHA-256 hash. The stored package hash is verified before any file is written; a changed archive is refused until it is re-imported. On unload, every file is preflighted first. If the deployed file was modified outside the manager, or a required backup is missing or damaged, the unload is refused and the deployment record is kept so no files are stranded.

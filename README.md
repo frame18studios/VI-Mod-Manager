@@ -79,6 +79,8 @@ Try the workflow safely with [`examples/example-package-demo.zip`](examples/exam
 - **Crash-aware operations** — a local journal resolves interrupted deploys on the next launch; overlapping operations are serialized.
 - **No package execution** — payload files are copied as opaque bytes; manifests are read as plain JSON.
 - **Local only** — no runtime telemetry, no network calls, no auto-updater, and no account requirement. A local audit log is written under `data/logs`; build-time tooling is described in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+- **Testable core seam** — library, deployment, configuration, and profile services sit behind a small ViewModel boundary, so core behavior can be tested without the UI.
+- **Format-neutral targets** — target folders are resolved through a generic local-folder adapter; the app does not detect games, match executable names, or inspect proprietary containers.
 
 ---
 
@@ -86,7 +88,7 @@ Try the workflow safely with [`examples/example-package-demo.zip`](examples/exam
 
 | Control | Behavior |
 | --- | --- |
-| **Target scope** | Files are written only into the target folder you select. The app's own settings, library, and backups live in a separate data root. |
+| **Target scope** | Files are written only into the target folder you select, resolved through a generic folder adapter. The app's own settings, library, and backups live in a separate data root. |
 | **Path validation** | Every relative path is normalized and must resolve inside the target folder. Absolute paths, drive prefixes, `.`/`..` segments, Windows-reserved names, and symlinks or junctions in existing path components are rejected. Duplicate destinations, including a collision with the generated config file, are rejected case-insensitively. |
 | **Archive structure** | ZIPs are checked only for structural ambiguity, such as duplicate entry names. There are no size, entry-count, manifest-size, or compression-ratio caps; payload bytes stream to disk. |
 | **Backups** | Before replacing an existing file, the original is copied to `backups/<install-id>/` and hashed. Unload preflights every file and refuses to clear deployment state if a required backup is missing or damaged. |

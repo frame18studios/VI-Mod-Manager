@@ -105,7 +105,7 @@ public partial class MainWindow
         }
 
         _targetPath.Text = path;
-        TargetFolderInfo info = _services.Targets.Inspect(path);
+        TargetFolderInfo info = _services.Workspace.Deployment.InspectTarget(path);
         _targetInfo.Text = info.Message
             + $"\nTop-level files: {info.TopLevelFiles:N0}   ·   Top-level size: {FormatBytes(info.TopLevelBytes)}";
 

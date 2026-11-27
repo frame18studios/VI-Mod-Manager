@@ -72,7 +72,7 @@ public partial class MainWindow
                 _busyText.Text = $"Importing {index + 1}/{paths.Count}: {Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar))}";
                 try
                 {
-                    var (record, _) = await _services.Manager.ImportPackageAsync(path);
+                    var (record, _) = await _viewModel.ImportAsync(path);
                     last = record;
                     imported++;
                 }
@@ -155,7 +155,7 @@ public partial class MainWindow
         BeginBusy($"Deploying {mod.Name}…");
         try
         {
-            LoadOutcome outcome = await _services.Manager.LoadModAsync(mod, targetDir);
+            LoadOutcome outcome = await _viewModel.DeploySelectedAsync(mod, targetDir);
             RefreshAll();
             var lines = new List<string> { $"{mod.Name} is now loaded." };
             lines.Add(outcome.ConfigPath is null
@@ -184,7 +184,7 @@ public partial class MainWindow
         BeginBusy("Deploying enabled packages…");
         try
         {
-            LoadSummary summary = await _services.Manager.LoadAllAsync(targetDir);
+            LoadSummary summary = await _viewModel.DeployAllAsync(targetDir);
             RefreshAll();
             var lines = new List<string> { $"{summary.Loaded.Count} mod(s) loaded in order." };
             if (summary.Skipped.Count > 0)
@@ -243,7 +243,7 @@ public partial class MainWindow
                 _busyText.Text = $"Unloading {mod.Name}…";
                 try
                 {
-                    restored += await _services.Manager.UninstallAsync(mod, targetDir);
+                    restored += await _viewModel.UnloadAsync(mod, targetDir);
                 }
                 catch (Exception exception)
                 {
@@ -268,27 +268,17 @@ public partial class MainWindow
 
     private void ToggleSelected(ModRecord mod)
     {
-        _services.Manager.Toggle(mod, !mod.Enabled);
+        _viewModel.Toggle(mod, !mod.Enabled);
         RefreshAll();
     }
 
     private async Task VerifySelectedAsync(ModRecord mod)
     {
-        string package = Path.Combine(_services.ModsDir, mod.Package);
-        if (!File.Exists(package))
-        {
-            await Dialogs.Info(this, "Verification failed", "The package file is missing.");
-            return;
-        }
-
         BeginBusy($"Verifying {mod.Name}…");
         try
         {
-            string actual = await Task.Run(() => Hashing.Sha256File(package));
-            await Dialogs.Info(this, "Package verification",
-                string.Equals(actual, mod.Sha256, StringComparison.OrdinalIgnoreCase)
-                    ? "SHA-256 matches the imported package record."
-                    : "SHA-256 mismatch. The package changed or became corrupted; re-import it before deploying.");
+            PackageVerification result = await _viewModel.VerifyAsync(mod);
+            await Dialogs.Info(this, result.Matches ? "Package verification" : "Verification failed", result.Message);
         }
         finally
         {
@@ -326,7 +316,7 @@ public partial class MainWindow
         BeginBusy($"Unloading {mod.Name}…");
         try
         {
-            int restored = await _services.Manager.UninstallAsync(mod, targetDir);
+            int restored = await _viewModel.UnloadAsync(mod, targetDir);
             RefreshAll();
             await Dialogs.Info(this, "Package unloaded", $"Unload complete. {restored} original file(s) restored.");
         }

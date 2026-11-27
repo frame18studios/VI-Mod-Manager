@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using ViModManager.Core;
 using ViModManager.Models;
+using ViModManager.ViewModels;
 
 namespace ViModManager;
 
@@ -18,6 +19,8 @@ public sealed class AppServices
     public JsonStore<ProfileDatabase> Profiles { get; }
     public ModManager Manager { get; }
     public TargetFolder Targets { get; } = new();
+    public WorkspaceServices Workspace { get; }
+    public MainViewModel ViewModel { get; }
 
     public AppServices(string? root = null)
     {
@@ -38,5 +41,7 @@ public sealed class AppServices
         History = new JsonStore<HistoryDatabase>(Path.Combine(DataDir, "history.json"));
         Profiles = new JsonStore<ProfileDatabase>(Path.Combine(DataDir, "profiles.json"));
         Manager = new ModManager(Mods, History, ModsDir, BackupsDir, Profiles);
+        Workspace = new WorkspaceServices(Manager);
+        ViewModel = new MainViewModel(Workspace);
     }
 }

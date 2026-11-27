@@ -123,7 +123,7 @@ public static class Packages
 
     /// <summary>
     /// Streams one ZIP entry to disk and returns the number of bytes written. No artificial size cap
-    /// is applied: packages may contain arbitrarily large game assets.
+    /// is applied: packages may contain arbitrarily large data assets.
     /// </summary>
     public static long ExtractEntryToFile(ZipArchiveEntry entry, string destination)
     {

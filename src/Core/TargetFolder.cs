@@ -17,11 +17,29 @@ public sealed class TargetFolderInfo
 }
 
 /// <summary>
+/// Format-neutral boundary for a deployment target. Implementations may only describe a folder;
+/// they must not identify applications, inspect proprietary containers, or bypass access controls.
+/// </summary>
+public interface ITargetAdapter
+{
+    string Id { get; }
+    string DisplayName { get; }
+    bool Supports(string? folder);
+    TargetFolderInfo Inspect(string? folder);
+}
+
+/// <summary>
 /// Describes any folder in generic terms. The tool never assumes which application
 /// owns the folder and never looks for identifiable executable names.
 /// </summary>
-public sealed class TargetFolder
+public sealed class TargetFolder : ITargetAdapter
 {
+    public string Id => "folder";
+    public string DisplayName => "Local folder";
+
+    public bool Supports(string? folder) =>
+        !string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder);
+
     public TargetFolderInfo Inspect(string? folder)
     {
         if (string.IsNullOrWhiteSpace(folder))
@@ -53,7 +71,7 @@ public sealed class TargetFolder
 
         try
         {
-            var files = Directory.EnumerateFiles(root).Take(2000).ToList();
+            var files = Directory.EnumerateFiles(root).ToList();
             info.TopLevelFiles = files.Count;
             long total = 0;
             foreach (string file in files)
@@ -79,7 +97,6 @@ public sealed class TargetFolder
         {
             info.Folders.AddRange(
                 Directory.EnumerateDirectories(root)
-                    .Take(20)
                     .Select(Path.GetFileName)
                     .Where(name => !string.IsNullOrEmpty(name))!);
         }
