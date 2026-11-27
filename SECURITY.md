@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Only the latest published `v*` release receives fixes. The `v0.2` source is experimental; use the latest tagged release for supported builds.
+Only the latest published `v*` release receives fixes. v0.2 is the current latest release and is experimental; use it for supported builds.
 
 ## Reporting a vulnerability
 

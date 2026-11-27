@@ -26,14 +26,14 @@
 
 ## Download
 
-Grab one of the two standalone Windows x64 executables from the [releases page](https://github.com/frame18studios/VI-Mod-Manager/releases/latest). No installer or archive is required — just run the EXE. The [`publish/` folder](publish/) in this repository holds older reference artifacts, not a published release.
+Grab one of the two standalone Windows x64 executables from the [v0.2 release](https://github.com/frame18studios/VI-Mod-Manager/releases/tag/v0.2). No installer or archive is required — just run the EXE. The [`publish/` folder](publish/) holds reference copies of the v0.2 builds; the release assets are authoritative.
 
 | File | Size | Requirements |
 | --- | --- | --- |
 | `ViModManager.exe` | ~45 MB | None — self-contained, includes the .NET 10 runtime. |
 | `ViModManager-light.exe` | ~25 MB | [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) must already be installed. |
 
-The `v0.2` source is described in [RELEASE_NOTES.md](RELEASE_NOTES.md). GitHub Releases are the authoritative download source; CI rebuilds both EXEs from source when a `v*` tag is pushed. The committed `publish/` EXEs are older unsigned artifacts and are not the current build. Published EXEs are unsigned while the SignPath application is pending, so Windows SmartScreen may show an "unknown publisher" prompt on first launch. Verify any download against `SHA256SUMS.txt` from the same release.
+The v0.2 release is described in [RELEASE_NOTES.md](RELEASE_NOTES.md). GitHub Releases are the authoritative download source; the committed `publish/` EXEs are v0.2 reference copies, not the authoritative assets. Those EXEs are unsigned while the SignPath application is pending, so Windows SmartScreen may show an "unknown publisher" prompt on first launch. Verify any download against `SHA256SUMS.txt` from the same release.
 
 > **Where to put it:** Run the EXE from any writable folder. Avoid `Program Files` or other protected locations. On first launch the app creates `data/`, `mods/`, and `backups/` beside the EXE, or under `VIMM_DATA_ROOT` (or `VMM_DATA_ROOT`) if that variable is set. Only one instance can use a given data root at a time; a second launch is refused until the first is closed.
 
@@ -138,7 +138,7 @@ dotnet test tests/ViModManager.Tests.csproj -c Release --nologo
 dotnet run --project src/ViModManager.csproj
 ```
 
-CI stages exactly two standalone EXEs and `SHA256SUMS.txt` in a flat `publish/` folder and attaches them to a `v*` tag. The committed `publish/` folder holds older reference artifacts; it is not a current download source. Full instructions are in [BUILDING.md](BUILDING.md).
+CI stages exactly two standalone EXEs and `SHA256SUMS.txt` in a flat `publish/` folder and attached them to the `v0.2` tag. The committed `publish/` folder holds v0.2 reference copies; it is not the authoritative download source. Full instructions are in [BUILDING.md](BUILDING.md).
 
 ---
 

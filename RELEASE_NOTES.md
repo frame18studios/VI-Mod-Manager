@@ -1,6 +1,6 @@
 # VI Mod Manager — v0.2 (Experimental)
 
-Status: v0.2 experimental. GitHub Releases are built from tagged `v*` commits; this document is used as the release description.
+Release date: 2026-11-27. Status: v0.2 experimental; this document is the published release description.
 
 ## Overview
 
@@ -10,14 +10,14 @@ Status: v0.2 experimental. GitHub Releases are built from tagged `v*` commits; t
 
 ## Downloads
 
-Two standalone Windows x64 executables are produced by the release workflow; the source tree is versioned `0.2.0`. No distribution ZIP archive and no installer.
+Two standalone Windows x64 executables are published for v0.2; the source tree is versioned `0.2.0`. No distribution ZIP archive and no installer.
 
 | File | Type | Notes |
 | --- | --- | --- |
 | `ViModManager.exe` | Self-contained | Includes the .NET 10 runtime (~45 MB). Runs on Windows x64 without prerequisites. |
 | `ViModManager-light.exe` | Framework-dependent | Compact (~25 MB). Requires the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0). |
 
-The committed `publish/` folder still contains the older unsigned artifacts from the previous build; the CI workflow rebuilds both EXEs from this source on a `v*` tag and publishes `SHA256SUMS.txt` with them. Verify a download before running it.
+The committed `publish/` folder contains reference copies of these v0.2 EXEs; the release assets attached to the `v0.2` tag are authoritative and include `SHA256SUMS.txt`. Verify a download before running it.
 
 ## Planned code signing policy
 
@@ -48,7 +48,7 @@ The SignPath Foundation application is still pending. Until it is approved, VI M
 
 ## Known limits
 
-- The `v0.2` source is experimental. The app is designed for local file management only: no network downloads, no auto-updater, and no telemetry.
+- The v0.2 release is experimental. The app is designed for local file management only: no network downloads, no auto-updater, and no telemetry.
 - Grand Theft Auto VI is mentioned only as a project direction. v0.2 does not claim or provide compatibility, support, or endorsement for that title, and it ships no game-specific modding features.
 - Published binaries target Windows x64. Runtime data (`data/`, `mods/`, `backups/`) is created beside the EXE on first launch, or under `VIMM_DATA_ROOT` / `VMM_DATA_ROOT` if set. Only one instance can use a data root at a time.
 - The current EXEs are unsigned while the SignPath Foundation application is pending. Verify `SHA256SUMS.txt` and use Windows SmartScreen's "More info" option only if you trust the source.

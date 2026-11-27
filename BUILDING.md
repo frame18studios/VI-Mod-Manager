@@ -49,7 +49,7 @@ dotnet publish src/ViModManager.csproj -c Release -r win-x64 `
 
 ### Stage the flat release folder
 
-CI stages only the two EXEs and the checksum file in a flat `publish/` folder. The committed `publish/` folder holds older reference artifacts (and may hold local data created by running them); it is not a current download source. A tagged release rebuilds from source and uploads the authoritative assets. Verify each download against the checksum file shipped with it.
+CI stages only the two EXEs and the checksum file in a flat `publish/` folder. The committed `publish/` folder holds reference copies of the v0.2 EXEs (and may hold local data created by running them); it is not the authoritative download source. A tagged release rebuilds from source and uploads the authoritative assets. Verify each download against the checksum file shipped with it.
 
 ```powershell
 New-Item -ItemType Directory -Force publish | Out-Null
@@ -76,7 +76,7 @@ The GitHub Actions workflow in `.github/workflows/windows-exe.yml`:
 5. Uploads the two EXEs and the checksum file as build artifacts.
 6. On a `v*` tag, creates a GitHub release with those files and the contents of `RELEASE_NOTES.md`.
 
-`bin/` and `obj/` are generated build caches and are ignored by Git. The three older release files in `publish/` are committed for reference only. When publishing a tagged release, the workflow builds fresh EXEs from source and uploads those assets; it does not push generated binaries back to the branch.
+`bin/` and `obj/` are generated build caches and are ignored by Git. The three files in `publish/` are committed v0.2 reference copies. The release workflow builds fresh EXEs from source and uploads those assets; it does not push generated binaries back to the branch.
 
 Release assets must contain only the two built EXEs and the checksum file. Do not add game files, mods, third-party assets, or user packages to a release.
 
@@ -118,7 +118,7 @@ tests/
 examples/                 Harmless text/JSON demo package (example-package-demo.zip)
 docs/                     Manifest and package-format documentation
 .github/workflows/        Windows EXE build and release workflow
-publish/                  Older reference artifacts: ViModManager.exe, ViModManager-light.exe, SHA256SUMS.txt
+publish/                  v0.2 reference copies: ViModManager.exe, ViModManager-light.exe, SHA256SUMS.txt
 THIRD-PARTY-NOTICES.md    Dependency versions and upstream license references
 ```
 
