@@ -4,9 +4,9 @@ Status: v0.2 source prepared; no release tag or GitHub Release has been publishe
 
 ## Overview
 
-**VI Mod Manager v0.2 (experimental)** is a general-purpose, local-first package library and reversible file-deployment workbench for Windows, built with **.NET 10** and **Avalonia 11**. This version removes artificial payload-size limits and adds crash recovery, fail-closed safety checks, single-instance data-root locking, pre-deploy integrity checks, and a clearer safety-focused UI.
+**VI Mod Manager v0.2 (experimental)** is an open-source, local-first package library and reversible file-deployment workbench for Windows, built with **.NET 10** and **Avalonia 11**. The project is designed around a future focus on Grand Theft Auto VI modding workflows, but this release deliberately ships only the generic deployment foundation; no game-specific features are included. This version removes artificial payload-size limits and adds crash recovery, fail-closed safety checks, single-instance data-root locking, pre-deploy integrity checks, and a clearer safety-focused UI.
 
-> **Independent tool.** VI Mod Manager is not affiliated with, authorized by, or endorsed by any game publisher or developer. This version and its releases contain no mods, game files, or game assets, and it does not bypass DRM, license checks, or anti-cheat systems. It bundles open-source libraries; the portable build also includes the .NET runtime. See [DISCLAIMER.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/DISCLAIMER.md) and [THIRD-PARTY-NOTICES.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/THIRD-PARTY-NOTICES.md) in the repository.
+> **Independent tool.** VI Mod Manager is not a Rockstar Games or Take-Two Interactive product and is not affiliated with, authorized by, endorsed by, or sponsored by Rockstar Games, Take-Two Interactive, or any other game publisher or developer. References to Grand Theft Auto VI describe project direction only and do not imply compatibility, support, or endorsement. "Grand Theft Auto" and "GTA" are trademarks of their respective owners. This version and its releases contain no mods, game files, game assets, or links to third-party mod downloads, and it does not bypass DRM, license checks, or anti-cheat systems. The original source is MIT licensed; bundled third-party libraries are acknowledged separately in [THIRD-PARTY-NOTICES.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/THIRD-PARTY-NOTICES.md). See also [DISCLAIMER.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/DISCLAIMER.md).
 
 ## Downloads
 
@@ -43,12 +43,13 @@ The SignPath Foundation application is still pending. Until it is approved, VI M
 - **Failure-injection coverage** — tests now exercise corrupt journals, locked journals, committed installs with tampered files, missing or damaged backups, committed config recovery, simultaneous installs to one destination, wide directories, large manifests, high entry counts, staging collisions, symlinked staging paths, failed generated-config updates, interrupted unloads with external edits, shared data roots, and uncapped large payloads.
 - **Safer recovery paths** — a corrupt or temporarily locked journal is preserved instead of discarded, unload recovery refuses externally changed files and re-verifies backup hashes, and generated-config updates keep a separate transaction snapshot so a failed write restores the previous generated config without disturbing the original backup.
 - **Layered core seam** — dedicated library, deployment, configuration, and profile services plus a UI-agnostic main ViewModel route every UI core operation through one testable boundary.
-- **Format-neutral target adapters** — a single local-folder adapter resolves deployment targets. There is no game detection, executable-name matching, or proprietary-format handling.
+- **Format-neutral target adapters in v0.2** — a single local-folder adapter resolves deployment targets. This release has no game detection, executable-name matching, proprietary-format handling, mod-link fetching, or game-specific asset editing; those capabilities are future work only.
 - **Uncapped directory preview** — the target folder scan counts every top-level file and folder instead of truncating at arbitrary display limits.
 
 ## Known limits
 
 - The `v0.2` source is experimental and no public release tag has been published yet. The app is designed for local file management only: no network downloads, no auto-updater, and no telemetry.
+- Grand Theft Auto VI is mentioned only as a project direction. v0.2 does not claim or provide compatibility, support, or endorsement for that title, and it ships no game-specific modding features.
 - Published binaries target Windows x64. Runtime data (`data/`, `mods/`, `backups/`) is created beside the EXE on first launch, or under `VIMM_DATA_ROOT` / `VMM_DATA_ROOT` if set. Only one instance can use a data root at a time.
 - The current EXEs are unsigned while the SignPath Foundation application is pending. Verify `SHA256SUMS.txt` and use Windows SmartScreen's "More info" option only if you trust the source.
 - The app validates paths and hashes, not intent. It does not scan packages for malware; only import content you have the rights to use.

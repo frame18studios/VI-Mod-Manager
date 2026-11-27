@@ -5,11 +5,16 @@
 <h1 align="center">VI Mod Manager</h1>
 
 <p align="center">
-  <strong>A local-first, reversible file-deployment workbench for Windows.</strong><br />
-  Import a package, choose a folder, deploy safely — and undo it later.
+  <strong>Open source · MIT licensed · Independent</strong><br />
+  An independent, open-source mod management project designed around a future focus on Grand Theft Auto VI modding workflows.
 </p>
 
 <p align="center">
+  Today it provides a generic package library and reversible file-deployment foundation for Windows. Game-specific capabilities are planned for later releases and are not present in v0.2.
+</p>
+
+<p align="center">
+  <img alt="Open source" src="https://img.shields.io/badge/open--source-yes-2ea44f" />
   <img alt=".NET 10" src="https://img.shields.io/badge/.NET-10.0-512BD4" />
   <img alt="Avalonia 11" src="https://img.shields.io/badge/Avalonia-11-8B44AC" />
   <img alt="Windows x64" src="https://img.shields.io/badge/platform-Windows%20x64-0078D4" />
@@ -18,11 +23,11 @@
   <img alt="Status: experimental" src="https://img.shields.io/badge/status-experimental-FFB86C" />
 </p>
 
-> **Independent project.** VI Mod Manager is a general-purpose file manager. It is not affiliated with, endorsed by, sponsored by, authorized by, or connected to any game publisher, developer, platform, or other company.
+> **Independent project.** VI Mod Manager is not a Rockstar Games or Take-Two Interactive product. It is not affiliated with, endorsed by, sponsored by, authorized by, or connected to Rockstar Games, Take-Two Interactive, or any other game publisher, developer, platform holder, or mod site. References to Grand Theft Auto VI are descriptive of project direction only and do not imply endorsement, partnership, compatibility, or support. "Grand Theft Auto" and "GTA" are trademarks of their respective owners.
 >
-> **No third-party game content is hosted or bundled.** This repository and its releases contain no mods, game files, or game assets. The only bundled package is an original text-and-JSON demo. You supply your own packages and are responsible for having the rights to use them.
+> **No third-party game content is hosted, bundled, or linked.** This repository and its releases contain no mods, game files, game assets, or links to third-party mod downloads. The only bundled package is an original text-and-JSON demo. You supply your own packages and are responsible for having the rights to use them.
 >
-> **No DRM or anti-cheat bypass.** The app copies files as data. It does not execute package code, decrypt content, inspect proprietary containers, or interact with online services.
+> **No DRM or anti-cheat bypass.** The app copies files as data. It does not execute package code, decrypt content, inspect proprietary game containers, or interact with online services.
 
 ---
 
@@ -80,7 +85,7 @@ Try the workflow safely with [`examples/example-package-demo.zip`](examples/exam
 - **No package execution** — payload files are copied as opaque bytes; manifests are read as plain JSON.
 - **Local only** — no runtime telemetry, no network calls, no auto-updater, and no account requirement. A local audit log is written under `data/logs`; build-time tooling is described in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 - **Testable core seam** — library, deployment, configuration, and profile services sit behind a small ViewModel boundary, so core behavior can be tested without the UI.
-- **Format-neutral targets** — target folders are resolved through a generic local-folder adapter; the app does not detect games, match executable names, or inspect proprietary containers.
+- **Format-neutral targets in v0.2** — target folders are resolved through a generic local-folder adapter; this release does not detect games, match executable names, or inspect proprietary containers. Game-specific adapters are future work and are not included here.
 
 ---
 
@@ -162,8 +167,8 @@ CI stages exactly two standalone EXEs and `SHA256SUMS.txt` in a flat `publish/` 
 
 - **License:** The original source code is licensed under the [MIT License](LICENSE).
 - **Third-party content:** The MIT License does not cover mods, assets, trademarks, or game content supplied by users or third parties. See [DISCLAIMER.md](DISCLAIMER.md).
-- **No affiliation:** The project is independent and makes no compatibility or endorsement claims.
-- **No hosted content:** This repository and its releases do not host user packages.
+- **No affiliation:** The project is independent of Rockstar Games and Take-Two Interactive and makes no compatibility, endorsement, or support claims about Grand Theft Auto VI or any other title.
+- **No hosted content:** This repository and its releases do not host user packages, game assets, or mod downloads, and do not link to third-party mod repositories.
 - **No circumvention:** The app does not bypass DRM, license checks, anti-cheat, or access controls.
 - **User responsibility:** Only import and deploy content you have the rights to use, and follow the terms that apply to the target software.
 - **Notice and takedown:** If you believe material in this repository or its release assets infringes your rights, use the private process in [SECURITY.md](SECURITY.md).

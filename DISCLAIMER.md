@@ -4,15 +4,16 @@
 
 This document describes the intended scope of VI Mod Manager. It is a plain-language notice, not legal advice. It does not create rights, grant permissions, or guarantee that a particular use is lawful.
 
-## 1. Independent, general-purpose software
+## 1. Independent, open-source software with a game-focused direction
 
-VI Mod Manager is an independent open-source desktop utility for organizing local archives and copying user-selected files into a user-selected folder.
+VI Mod Manager is an independent, open-source desktop utility for organizing local archives and copying user-selected files into a user-selected folder. The project is designed around a future focus on Grand Theft Auto VI modding workflows; the current release provides only the generic local-folder package workflow and contains no game-specific features.
 
-- It is **not affiliated with, connected to, endorsed by, sponsored by, authorized by, or associated with** any game publisher, game developer, platform holder, mod site, or other company.
-- It does not host, index, catalog, recommend, or distribute third-party mods, game files, or game assets. The only bundled package is `examples/example-package-demo.zip`, an original text-and-JSON demo created for this project and covered by the repository's MIT License.
-- It does not claim compatibility with, or support for, any specific product. Any compatibility depends on the target software and the files supplied by the user.
+- It is **not affiliated with, connected to, endorsed by, sponsored by, authorized by, or associated with** Rockstar Games, Take-Two Interactive, any other game publisher, game developer, platform holder, mod site, or other company. It is not a Rockstar Games or Take-Two Interactive product.
+- It does not host, index, catalog, recommend, link to, or distribute third-party mods, game files, or game assets. The only bundled package is `examples/example-package-demo.zip`, an original text-and-JSON demo created for this project and covered by the repository's MIT License.
+- It does not claim compatibility with, support for, or endorsement by Grand Theft Auto VI or any other specific product. Any compatibility depends on the target software and the files supplied by the user.
+- References to "Grand Theft Auto VI", "GTA VI", "Grand Theft Auto", and "GTA" are descriptive of project direction only. Those names and related marks belong to their respective owners. The project uses no third-party logos, art, or game assets and makes no claim to any third-party mark.
 - All third-party product names, trademarks, service marks, and logos belong to their respective owners. The project name and logo are used only to identify this open-source project and do not claim any third-party mark.
-- The word "mod" in the project name is descriptive of the generic package workflow. It does not imply affiliation with, endorsement by, or authorization from any modding community or rights holder.
+- The word "mod" in the project name is descriptive of the package workflow. It does not imply affiliation with, endorsement by, or authorization from any modding community or rights holder.
 
 ## 2. What the software does — and does not do
 
@@ -26,9 +27,9 @@ The application:
 
 The application does **not**:
 
-- Include, download, or host game files, game assets, mods, or other third-party content.
+- Include, download, host, or link to game files, game assets, mods, third-party mod repositories, or other third-party content.
 - Execute package code, scripts, installers, or payload content. Opening a local folder in File Explorer is a separate, user-initiated convenience action.
-- Decrypt, unpack, modify, or bypass proprietary containers, DRM, license checks, or anti-cheat systems.
+- Decrypt, unpack, modify, or bypass proprietary game containers, DRM, license checks, or anti-cheat systems.
 - Inspect, patch, or interact with a game's memory, process, network traffic, or online services.
 - Provide cheat, piracy, account, or access-control functionality.
 - Send runtime telemetry or require an online account.
@@ -51,11 +52,11 @@ Do not use VI Mod Manager to infringe rights, bypass technical protection measur
 
 ## 4. No endorsement or compatibility claims
 
-References to file formats, folders, or generic workflows are provided for interoperability and description only. They do not imply endorsement, partnership, sponsorship, or authorization by any rights holder. The project does not authorize modding, reverse engineering, or any other activity that a target product's terms may prohibit.
+References to file formats, folders, game titles, or generic workflows are provided for interoperability and description only. Naming a third-party title to describe project direction is descriptive use; it does not grant permission to use associated trademarks, art, lore, or content, and it does not imply endorsement, partnership, sponsorship, compatibility, or authorization by any rights holder. The project does not authorize modding, reverse engineering, or any other activity that a target product's terms may prohibit.
 
 ## 5. Notice and takedown
 
-This repository does not host user packages. If you believe that material in this repository or its release assets infringes your rights, use the private reporting channel described in [SECURITY.md](SECURITY.md). Do not post personal contact details in a public issue. Include:
+This repository does not host user packages. If you believe that material in this repository or its release assets infringes your rights, including trademark or other intellectual-property concerns, use the private reporting channel described in [SECURITY.md](SECURITY.md). Do not post personal contact details in a public issue. Include:
 
 - The material you believe is infringing and its location.
 - The right you believe is infringed.
