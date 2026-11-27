@@ -12,14 +12,14 @@ using Xunit;
 
 namespace ViModManager.Tests;
 
-/// <summary>Adversarial and architecture tests for the v0.2 hardening phases 4-6.</summary>
-public sealed class Phase4Through6Tests : IDisposable
+/// <summary>Adversarial and architecture tests for local deployment and service seams.</summary>
+public sealed class HardeningTests : IDisposable
 {
     private readonly string _root;
 
-    public Phase4Through6Tests()
+    public HardeningTests()
     {
-        _root = Path.Combine(Path.GetTempPath(), "vimm-phase456-" + Guid.NewGuid().ToString("N"));
+        _root = Path.Combine(Path.GetTempPath(), "vimm-hardening-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
     }
 
