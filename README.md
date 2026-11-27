@@ -5,12 +5,12 @@
 <h1 align="center">VI Mod Manager</h1>
 
 <p align="center">
-  <strong>Open source · MIT licensed · Independent</strong><br />
-  An independent, open-source mod management project designed around a future focus on Grand Theft Auto VI modding workflows.
+  <strong>Open Source · MIT Licensed · Windows</strong><br />
+  An independent, open-source GTA VI mod manager.
 </p>
 
 <p align="center">
-  Today it provides a generic package library and reversible file-deployment foundation for Windows. Game-specific capabilities are planned for later releases and are not present in v0.2.
+  Built to simplify mod organization, installation, configuration, and customization, with a long-term vision of making GTA VI modding more accessible through automated asset handling, editing, and mod generation.
 </p>
 
 <p align="center">
@@ -23,7 +23,9 @@
   <img alt="Status: experimental" src="https://img.shields.io/badge/status-experimental-FFB86C" />
 </p>
 
-> **Independent project.** VI Mod Manager is not a Rockstar Games or Take-Two Interactive product. It is not affiliated with, endorsed by, sponsored by, authorized by, or connected to Rockstar Games, Take-Two Interactive, or any other game publisher, developer, platform holder, or mod site. References to Grand Theft Auto VI are descriptive of project direction only and do not imply endorsement, partnership, compatibility, or support. "Grand Theft Auto" and "GTA" are trademarks of their respective owners.
+> **Independent community project.** Not affiliated with, endorsed by, sponsored by, or authorized by Rockstar Games or Take-Two Interactive. "Grand Theft Auto VI" and "GTA VI" are used only to describe the project's intended focus; those marks belong to their respective owners. No endorsement, partnership, compatibility, or support is claimed.
+>
+> **Current release: v0.2 Experimental.** VI Mod Manager currently provides generic package management and reversible file deployment to user-selected folders. GTA VI-specific game detection, RPF support, asset editing, mod discovery, and automatic mod generation are planned for future releases and are **not** included in v0.2.
 >
 > **No third-party game content is hosted, bundled, or linked.** This repository and its releases contain no mods, game files, game assets, or links to third-party mod downloads. The only bundled package is an original text-and-JSON demo. You supply your own packages and are responsible for having the rights to use them.
 >

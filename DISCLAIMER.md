@@ -4,16 +4,16 @@
 
 This document describes the intended scope of VI Mod Manager. It is a plain-language notice, not legal advice. It does not create rights, grant permissions, or guarantee that a particular use is lawful.
 
-## 1. Independent, open-source software with a game-focused direction
+## 1. Independent, open-source GTA VI mod manager
 
-VI Mod Manager is an independent, open-source desktop utility for organizing local archives and copying user-selected files into a user-selected folder. The project is designed around a future focus on Grand Theft Auto VI modding workflows; the current release provides only the generic local-folder package workflow and contains no game-specific features.
+VI Mod Manager is an independent, open-source desktop mod manager intended for Grand Theft Auto VI workflows. The current `v0.2` release provides only generic package management and reversible file deployment to user-selected folders; game detection, RPF support, asset editing, mod discovery, and mod generation are future plans and are not implemented in this version.
 
 - It is **not affiliated with, connected to, endorsed by, sponsored by, authorized by, or associated with** Rockstar Games, Take-Two Interactive, any other game publisher, game developer, platform holder, mod site, or other company. It is not a Rockstar Games or Take-Two Interactive product.
 - It does not host, index, catalog, recommend, link to, or distribute third-party mods, game files, or game assets. The only bundled package is `examples/example-package-demo.zip`, an original text-and-JSON demo created for this project and covered by the repository's MIT License.
-- It does not claim compatibility with, support for, or endorsement by Grand Theft Auto VI or any other specific product. Any compatibility depends on the target software and the files supplied by the user.
-- References to "Grand Theft Auto VI", "GTA VI", "Grand Theft Auto", and "GTA" are descriptive of project direction only. Those names and related marks belong to their respective owners. The project uses no third-party logos, art, or game assets and makes no claim to any third-party mark.
+- The current release makes no compatibility, support, or endorsement claim for Grand Theft Auto VI or any other specific product. Any future game-specific support will be described in the release notes for the version that introduces it and will remain unaffiliated with the rights holder.
+- References to "Grand Theft Auto VI", "GTA VI", "Grand Theft Auto", and "GTA" describe the project's intended focus. Those names and related marks belong to their respective owners. The project uses no third-party logos, art, or game assets and makes no claim to any third-party mark.
 - All third-party product names, trademarks, service marks, and logos belong to their respective owners. The project name and logo are used only to identify this open-source project and do not claim any third-party mark.
-- The word "mod" in the project name is descriptive of the package workflow. It does not imply affiliation with, endorsement by, or authorization from any modding community or rights holder.
+- The word "mod" in the project name reflects the intended mod-management purpose. It does not imply affiliation with, endorsement by, or authorization from any modding community or rights holder.
 
 ## 2. What the software does — and does not do
 
@@ -25,15 +25,17 @@ The application:
 - Backs up overwritten files and records SHA-256 hashes so deployment can be reversed.
 - Stores its own settings, package library, and backups in a separate data directory.
 
-The application does **not**:
+The current `v0.2` release does **not**:
 
 - Include, download, host, or link to game files, game assets, mods, third-party mod repositories, or other third-party content.
 - Execute package code, scripts, installers, or payload content. Opening a local folder in File Explorer is a separate, user-initiated convenience action.
-- Decrypt, unpack, modify, or bypass proprietary game containers, DRM, license checks, or anti-cheat systems.
+- Decrypt, unpack, or modify proprietary game containers. Any future format support would cover only formats the project has the rights to handle and would not bypass DRM, license checks, anti-cheat systems, or access controls.
 - Inspect, patch, or interact with a game's memory, process, network traffic, or online services.
 - Provide cheat, piracy, account, or access-control functionality.
 - Send runtime telemetry or require an online account.
 - Collect, transmit, or sell personal data.
+
+This list describes v0.2. Future game-specific features, if implemented, will be documented in the release notes for the version that introduces them and will remain subject to applicable permissions and terms.
 
 ## 3. Third-party content and user responsibility
 
