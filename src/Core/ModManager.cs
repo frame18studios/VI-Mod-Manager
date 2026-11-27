@@ -126,7 +126,20 @@ public sealed class ModManager
     /// </summary>
     private void RecoverPendingOperation()
     {
-        DeploymentJournal? journal = _journal.Read();
+        DeploymentJournal? journal;
+        try
+        {
+            journal = _journal.Read();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            RecoveryWarning =
+                "The deployment journal is currently locked or unavailable. Close other file tools and restart to finish recovery: "
+                + exception.Message;
+            AppLog.Error(RecoveryWarning, exception);
+            return;
+        }
+
         if (journal is null)
         {
             RecoveryWarning = null;
@@ -260,6 +273,23 @@ public sealed class ModManager
 
         foreach (var step in journal.Steps)
         {
+            string destination = Paths.ResolveWithin(journal.TargetDir, step.Destination);
+            if (!File.Exists(destination))
+            {
+                throw new InvalidOperationException(
+                    $"The committed config file is missing: {step.Destination}.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(step.InstalledHash)
+                && !string.Equals(
+                    Hashing.Sha256File(destination),
+                    step.InstalledHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"The committed config file changed after the interrupted write: {step.Destination}.");
+            }
+
             mod.InstalledFiles.RemoveAll(file => file.Destination == step.Destination);
             mod.InstalledFiles.Add(step);
         }
@@ -1079,7 +1109,14 @@ public sealed class ModManager
                 LoadMod(mod, targetDir);
                 summary.Loaded.Add(mod.Name);
             }
-            catch (Exception exception) when (exception is InvalidOperationException or PackageException or IOException or UnauthorizedAccessException)
+            catch (Exception exception) when (
+                exception is InvalidOperationException
+                or PackageException
+                or IOException
+                or UnauthorizedAccessException
+                or ArgumentException
+                or NotSupportedException
+                or System.Security.SecurityException)
             {
                 summary.Failed.Add((mod.Name, exception.Message));
             }
@@ -1252,6 +1289,16 @@ public sealed class ModManager
                     if (!File.Exists(backupPath))
                     {
                         failures.Add($"{file.Destination}: backup is missing.");
+                        continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(file.BackupHash)
+                        && !string.Equals(
+                            Hashing.Sha256File(backupPath),
+                            file.BackupHash,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        failures.Add($"{file.Destination}: backup is damaged.");
                         continue;
                     }
 
@@ -1560,6 +1607,7 @@ public sealed class ModManager
 
     public void ClearHistory()
     {
+        using var operation = EnterOperation();
         History.Current.Entries.Clear();
         History.Save();
     }

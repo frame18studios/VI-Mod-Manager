@@ -48,7 +48,7 @@ public partial class MainWindow
     private void RefreshProfiles()
     {
         Ui.Clear(_profilesPanel);
-        var profiles = _services.Manager.ListProfiles();
+        var profiles = _viewModel.Profiles();
         if (profiles.Count == 0)
         {
             _profilesPanel.Children.Add(Ui.Muted("No saved profiles yet. Name your current setup above to create one.", true));
@@ -94,7 +94,7 @@ public partial class MainWindow
 
     private void RefreshSidebarProfile()
     {
-        var profile = _services.Manager.ListProfiles().FirstOrDefault();
+        var profile = _viewModel.Profiles().FirstOrDefault();
         _sideProfile.Text = profile is null ? "No profile saved" : $"Latest profile: {profile.Name}";
     }
 }

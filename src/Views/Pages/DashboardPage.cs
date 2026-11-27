@@ -140,7 +140,7 @@ public partial class MainWindow
 
     private void RefreshOverview()
     {
-        var mods = _services.Manager.ListMods();
+        var mods = _viewModel.Mods;
         _statLibrary.Text = mods.Count.ToString(CultureInfo.InvariantCulture);
         _statEnabled.Text = mods.Count(mod => mod.Enabled).ToString(CultureInfo.InvariantCulture);
         _statLoaded.Text = mods.Count(mod => mod.Installed).ToString(CultureInfo.InvariantCulture);
@@ -149,7 +149,7 @@ public partial class MainWindow
         Ui.Clear(_healthContainer);
         var checks = new List<(string Text, string? ActionLabel, Action? Action, bool IsWarning)>();
 
-        if (_services.Manager.RecoveryWarning is { } recovery)
+        if (_viewModel.RecoveryWarning is { } recovery)
         {
             Action openLog = () =>
             {
@@ -188,7 +188,7 @@ public partial class MainWindow
                 "Fix target →", () => Go(4), true));
         }
 
-        int conflicts = _services.Manager.Conflicts().Count;
+        int conflicts = _viewModel.Conflicts().Count;
         if (conflicts > 0)
         {
             checks.Add(($"{conflicts} destination path overlap(s) found between enabled packages.",
@@ -285,7 +285,7 @@ public partial class MainWindow
     {
         try
         {
-            return _services.Manager.ConfigValues(mod).Count;
+            return _viewModel.ConfigValues(mod).Count;
         }
         catch (Exception)
         {

@@ -691,10 +691,10 @@ public sealed class CoreTests : IDisposable
     {
         ModManager manager = Manager();
         var (first, _) = manager.ImportPackage(Package("first-concurrent", """
-        {"id":"first-concurrent","name":"First","files":[{"source":"a.txt","destination":"a.txt"}]}
+        {"id":"first-concurrent","name":"First","files":[{"source":"a.txt","destination":"same.txt"}]}
         """, ("a.txt", "ONE")));
         var (second, _) = manager.ImportPackage(Package("second-concurrent", """
-        {"id":"second-concurrent","name":"Second","files":[{"source":"b.txt","destination":"b.txt"}]}
+        {"id":"second-concurrent","name":"Second","files":[{"source":"b.txt","destination":"same.txt"}]}
         """, ("b.txt", "TWO")));
 
         string target = Path.Combine(_root, "target");
@@ -703,10 +703,12 @@ public sealed class CoreTests : IDisposable
             System.Threading.Tasks.Task.Run(() => manager.Install(first, target)),
             System.Threading.Tasks.Task.Run(() => manager.Install(second, target)));
 
-        Assert.Equal("ONE", File.ReadAllText(Path.Combine(target, "a.txt")));
-        Assert.Equal("TWO", File.ReadAllText(Path.Combine(target, "b.txt")));
+        // Shared destination and journal path: without the operation gate these writes interleave.
+        string final = File.ReadAllText(Path.Combine(target, "same.txt"));
+        Assert.Contains(final, new[] { "ONE", "TWO" });
         Assert.True(first.Installed);
         Assert.True(second.Installed);
+        Assert.Equal(2, manager.History.Current.Entries.Count(entry => entry.Action == "Deployed"));
     }
 
     [Fact]

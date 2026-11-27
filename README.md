@@ -96,7 +96,7 @@ Try the workflow safely with [`examples/example-package-demo.zip`](examples/exam
 | **Crash recovery** | A local deployment journal records destructive steps. Interrupted installs are rolled back or completed and interrupted unloads/config writes are finished on the next launch. |
 | **Concurrency** | One operation at a time owns library and deployment state, so overlapping UI actions cannot interleave writes. |
 | **Auditability** | Local-only events are appended to `data/logs/vimm.log`. Nothing is uploaded or sent to any service. |
-| **No execution** | The app does not run package code, scripts, installers, or other applications. |
+| **No execution** | The app does not run package code, scripts, installers, or payload content; opening a folder in File Explorer is a separate user-initiated action. |
 | **No privilege escalation** | The app runs as the current user and does not request administrator rights. |
 | **Content trust** | The app validates paths and hashes, not intent. It does not scan for malware. Only import packages from sources you trust. |
 

@@ -22,8 +22,16 @@ public static class AppLog
     {
         lock (Gate)
         {
-            Directory.CreateDirectory(directory);
-            _file = Path.Combine(directory, "vimm.log");
+            try
+            {
+                Directory.CreateDirectory(directory);
+                _file = Path.Combine(directory, "vimm.log");
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                // Logging is optional; a bad log path must never prevent the app from starting.
+                _file = null;
+            }
         }
     }
 

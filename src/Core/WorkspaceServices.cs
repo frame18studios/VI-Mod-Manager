@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using ViModManager.Models;
 
@@ -12,7 +13,10 @@ public sealed record PackageVerification(bool Matches, string Message);
 public interface ILibraryService
 {
     IReadOnlyList<ModRecord> List();
+    IReadOnlyList<ModRecord> LoadOrder();
     ModRecord? Get(string? id);
+    JsonObject? ManifestFor(ModRecord mod);
+    IReadOnlyList<PackageFile> FilesFor(ModRecord mod);
     Task<(ModRecord Record, PackageContents Info)> ImportAsync(string path);
     void Toggle(ModRecord mod, bool enabled);
     void Rename(ModRecord mod, string name);
@@ -82,7 +86,10 @@ internal sealed class LibraryService : ILibraryService
     public LibraryService(ModManager manager) => _manager = manager;
 
     public IReadOnlyList<ModRecord> List() => _manager.ListMods();
+    public IReadOnlyList<ModRecord> LoadOrder() => _manager.LoadOrder();
     public ModRecord? Get(string? id) => _manager.Get(id);
+    public JsonObject? ManifestFor(ModRecord mod) => _manager.ManifestFor(mod);
+    public IReadOnlyList<PackageFile> FilesFor(ModRecord mod) => _manager.FilesFor(mod);
     public Task<(ModRecord Record, PackageContents Info)> ImportAsync(string path) => _manager.ImportPackageAsync(path);
     public void Toggle(ModRecord mod, bool enabled) => _manager.Toggle(mod, enabled);
     public void Rename(ModRecord mod, string name) => _manager.Rename(mod, name);

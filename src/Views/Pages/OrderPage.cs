@@ -45,7 +45,7 @@ public partial class MainWindow
     private void RefreshOrder()
     {
         Ui.Clear(_orderPanel);
-        var mods = _services.Manager.ListMods();
+        var mods = _viewModel.Mods;
         if (mods.Count == 0)
         {
             _orderPanel.Children.Add(Ui.Muted("No packages in the library yet. Import a package to build a deployment order.", true));
@@ -75,7 +75,7 @@ public partial class MainWindow
             }
 
             info.Children.Add(title);
-            info.Children.Add(Ui.Muted($"{mod.Kind} · {_services.Manager.DeployableSummary(mod)}", false, 11.5));
+            info.Children.Add(Ui.Muted($"{mod.Kind} · {_viewModel.DeployableSummary(mod)}", false, 11.5));
             Grid.SetColumn(info, 1);
             rowGrid.Children.Add(info);
 
@@ -116,7 +116,7 @@ public partial class MainWindow
     private void RefreshConflicts()
     {
         Ui.Clear(_conflictPanel);
-        var conflicts = _services.Manager.Conflicts();
+        var conflicts = _viewModel.Conflicts();
         if (conflicts.Count == 0)
         {
             _conflictPanel.Children.Add(Ui.Muted("No path overlaps detected. Every enabled package writes to distinct destinations."));

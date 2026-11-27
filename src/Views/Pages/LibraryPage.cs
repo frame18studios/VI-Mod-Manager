@@ -94,7 +94,7 @@ public partial class MainWindow
 
     private void RefreshLibrary()
     {
-        var all = _services.Manager.ListMods();
+        var all = _viewModel.Mods;
         string query = _search.Text?.Trim().ToLowerInvariant() ?? "";
         var filtered = all.Where(mod =>
         {
@@ -165,7 +165,7 @@ public partial class MainWindow
             meta.Add(mod.Author);
         }
 
-        meta.Add(_services.Manager.DeployableSummary(mod));
+        meta.Add(_viewModel.DeployableSummary(mod));
         body.Children.Add(Ui.Muted(string.Join(" · ", meta), true, 11.5));
 
         if (mod.Installed || !mod.Enabled)
@@ -217,7 +217,7 @@ public partial class MainWindow
     private void RefreshDetail()
     {
         Ui.Clear(_detailPanel);
-        var mod = _services.Manager.Get(_selectedModId);
+        var mod = _viewModel.Get(_selectedModId);
         if (mod is null)
         {
             var empty = Ui.VStack(12);
@@ -233,12 +233,13 @@ public partial class MainWindow
             return;
         }
 
-        var manifest = _services.Manager.ManifestFor(mod);
+        var manifest = _viewModel.ManifestFor(mod);
         string? target = ModConfig.ConfigDestination(manifest);
         Dictionary<string, string> values;
         try
         {
-            values = _services.Manager.ConfigValues(mod);
+            values = _viewModel.ConfigValues(mod).ToDictionary(
+                pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         }
         catch (Exception)
         {
@@ -298,7 +299,7 @@ public partial class MainWindow
         };
         AddDetailRow(grid, 0, "Archive", mod.Package);
         AddDetailRow(grid, 1, "Category", $"{mod.Kind} — {ModClassifier.Hint(mod.Kind)}");
-        AddDetailRow(grid, 2, "Payload", _services.Manager.DeployableSummary(mod));
+        AddDetailRow(grid, 2, "Payload", _viewModel.DeployableSummary(mod));
         AddDetailRow(grid, 3, "SHA-256", mod.Sha256.Length > 36 ? mod.Sha256[..36] + "…" : mod.Sha256);
         AddDetailRow(grid, 4, "Config output", target ?? "Not declared (app-only)");
         AddDetailRow(grid, 5, "Deployed at", mod.LoadedAt ?? "Not deployed");
@@ -317,7 +318,7 @@ public partial class MainWindow
         _fieldReaders.Clear();
         _customRows.Clear();
 
-        var schema = _services.Manager.SchemaFor(mod);
+        var schema = _viewModel.SchemaFor(mod);
         if (schema.Count > 0)
         {
             var form = Ui.VStack(10);
@@ -366,7 +367,7 @@ public partial class MainWindow
         List<PackageFile> files;
         try
         {
-            files = _services.Manager.FilesFor(mod);
+            files = _viewModel.FilesFor(mod).ToList();
         }
         catch (PackageException exception)
         {

@@ -41,7 +41,7 @@ public sealed class AppServices
         History = new JsonStore<HistoryDatabase>(Path.Combine(DataDir, "history.json"));
         Profiles = new JsonStore<ProfileDatabase>(Path.Combine(DataDir, "profiles.json"));
         Manager = new ModManager(Mods, History, ModsDir, BackupsDir, Profiles);
-        Workspace = new WorkspaceServices(Manager);
+        Workspace = new WorkspaceServices(Manager, new TargetAdapterRegistry(Targets));
         ViewModel = new MainViewModel(Workspace);
     }
 }

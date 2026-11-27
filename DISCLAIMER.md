@@ -27,7 +27,7 @@ The application:
 The application does **not**:
 
 - Include, download, or host game files, game assets, mods, or other third-party content.
-- Execute package code, scripts, installers, or other programs.
+- Execute package code, scripts, installers, or payload content. Opening a local folder in File Explorer is a separate, user-initiated convenience action.
 - Decrypt, unpack, modify, or bypass proprietary containers, DRM, license checks, or anti-cheat systems.
 - Inspect, patch, or interact with a game's memory, process, network traffic, or online services.
 - Provide cheat, piracy, account, or access-control functionality.

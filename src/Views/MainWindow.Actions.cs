@@ -140,7 +140,7 @@ public partial class MainWindow
 
     private async Task DeploySelectedAsync()
     {
-        var mod = _services.Manager.Get(_selectedModId);
+        var mod = _viewModel.Get(_selectedModId);
         if (mod is null)
         {
             return;
@@ -218,7 +218,7 @@ public partial class MainWindow
             return;
         }
 
-        var loaded = _services.Manager.LoadOrder().Where(mod => mod.Installed).ToList();
+        var loaded = _viewModel.LoadOrder.Where(mod => mod.Installed).ToList();
         if (loaded.Count == 0)
         {
             await Dialogs.Info(this, "Nothing to unload", "No mods are currently loaded.");
@@ -294,7 +294,7 @@ public partial class MainWindow
             return;
         }
 
-        _services.Manager.Rename(mod, name);
+        _viewModel.Rename(mod, name);
         RefreshAll();
     }
 
@@ -341,7 +341,7 @@ public partial class MainWindow
 
         try
         {
-            _services.Manager.Remove(mod);
+            _viewModel.Remove(mod);
             _selectedModId = null;
             RefreshAll();
         }
@@ -370,7 +370,7 @@ public partial class MainWindow
 
         try
         {
-            _services.Manager.SaveConfig(mod, values);
+            _viewModel.SaveValues(mod, values);
         }
         catch (Exception exception)
         {
@@ -392,19 +392,19 @@ public partial class MainWindow
             return;
         }
 
-        _services.Manager.ResetConfig(mod);
+        _viewModel.ResetValues(mod);
         RefreshAll();
     }
 
     private void MoveMod(string modId, int delta)
     {
-        var mod = _services.Manager.Get(modId);
+        var mod = _viewModel.Get(modId);
         if (mod is null)
         {
             return;
         }
 
-        if (_services.Manager.Move(mod, delta))
+        if (_viewModel.Move(mod, delta))
         {
             RefreshOrder();
             RefreshLibrary();
@@ -413,13 +413,13 @@ public partial class MainWindow
 
     private void MoveModTo(string modId, int target)
     {
-        var mod = _services.Manager.Get(modId);
+        var mod = _viewModel.Get(modId);
         if (mod is null)
         {
             return;
         }
 
-        if (_services.Manager.MoveTo(mod, target))
+        if (_viewModel.MoveTo(mod, target))
         {
             RefreshOrder();
             RefreshLibrary();
@@ -428,7 +428,7 @@ public partial class MainWindow
 
     private async Task ShowConflictsAsync()
     {
-        var conflicts = _services.Manager.Conflicts();
+        var conflicts = _viewModel.Conflicts();
         if (conflicts.Count == 0)
         {
             await Dialogs.Info(this, "Conflict scan", "No manifest destination conflicts found.");
@@ -471,7 +471,7 @@ public partial class MainWindow
         string name = _profileName.Text?.Trim() ?? "";
         try
         {
-            var profile = _services.Manager.SaveProfile(name);
+            var profile = _viewModel.SaveProfile(name);
             _profileName.Text = "";
             RefreshAll();
             await Dialogs.Info(this, "Profile saved",
@@ -496,7 +496,7 @@ public partial class MainWindow
         {
             string? targetDir = await TargetDirOrWarnAsync(warn: false);
             BeginBusy($"Applying profile “{profile.Name}”…");
-            int applied = _services.Manager.ApplyProfile(profile, targetDir);
+            int applied = _viewModel.ApplyProfile(profile, targetDir);
             RefreshAll();
             await Dialogs.Info(this, "Profile applied",
                 $"{applied} mod configuration(s) restored from “{profile.Name}”." +
@@ -520,7 +520,7 @@ public partial class MainWindow
             return;
         }
 
-        _services.Manager.RenameProfile(profile, name);
+        _viewModel.RenameProfile(profile, name);
         RefreshProfiles();
     }
 
@@ -533,7 +533,7 @@ public partial class MainWindow
             return;
         }
 
-        _services.Manager.DeleteProfile(profile);
+        _viewModel.DeleteProfile(profile);
         RefreshProfiles();
     }
 
@@ -551,7 +551,7 @@ public partial class MainWindow
             return;
         }
 
-        _services.Manager.ClearHistory();
+        _viewModel.ClearHistory();
         RefreshAll();
     }
 

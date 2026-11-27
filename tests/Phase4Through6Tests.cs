@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using ViModManager;
 using ViModManager.Core;
@@ -190,11 +191,16 @@ public sealed class Phase4Through6Tests : IDisposable
         var viewModel = new MainViewModel(services.Workspace);
 
         var (mod, _) = await viewModel.ImportAsync(Package("seam", """
-        {"id":"seam","name":"Seam","files":[{"source":"a.txt","destination":"a.txt"}]}
+        {"id":"seam","name":"Seam","settings":[{"key":"mode","type":"text","default":"a"}],"files":[{"source":"a.txt","destination":"a.txt"}]}
         """, ("a.txt", "payload")));
 
         string target = Path.Combine(_root, "seam-target");
         Directory.CreateDirectory(target);
+
+        Assert.Single(viewModel.Mods);
+        Assert.NotEmpty(viewModel.SchemaFor(mod));
+        Assert.NotEmpty(viewModel.FilesFor(mod));
+        Assert.True(viewModel.InspectTarget(target).Valid);
 
         PackageVerification valid = await viewModel.VerifyAsync(mod);
         Assert.True(valid.Matches);
@@ -215,6 +221,157 @@ public sealed class Phase4Through6Tests : IDisposable
 
         Assert.Equal(0, await viewModel.UnloadAsync(mod, target));
         Assert.False(File.Exists(Path.Combine(target, "a.txt")));
+    }
+
+    [Fact]
+    public void LockedJournalBlocksRecoveryWithoutDiscardingIt()
+    {
+        string data = DataPath();
+        ModManager manager = NewManager(data);
+        var (mod, _) = manager.ImportPackage(Package("locked-journal", null, ("a.txt", "payload")));
+
+        string journalPath = Path.Combine(data, "deployment-journal.json");
+        new DeploymentJournalStore(data).Write(new DeploymentJournal
+        {
+            Operation = DeploymentJournal.InstallOperation,
+            Phase = DeploymentJournal.PreparePhase,
+            ModId = mod.Id,
+            ModName = mod.Name,
+            TargetDir = Path.Combine(_root, "locked-target"),
+            InstallId = Guid.NewGuid().ToString("N"),
+        });
+
+        using (new FileStream(journalPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            ModManager blocked = NewManager(data);
+            Assert.NotNull(blocked.RecoveryWarning);
+            Assert.Contains("locked or unavailable", blocked.RecoveryWarning, StringComparison.OrdinalIgnoreCase);
+            Assert.True(File.Exists(journalPath));
+        }
+
+        ModManager recovered = NewManager(data);
+        Assert.Null(recovered.RecoveryWarning);
+        Assert.False(File.Exists(journalPath));
+    }
+
+    [Fact]
+    public void InterruptedUninstallWithCorruptBackupBlocksRecoveryUntilRestored()
+    {
+        string data = DataPath();
+        ModManager manager = NewManager(data);
+        var (mod, _) = manager.ImportPackage(Package("corrupt-recovery-backup", """
+        {"id":"corrupt-recovery-backup","name":"Corrupt Recovery Backup","files":[{"source":"a.txt","destination":"a.txt"}]}
+        """, ("a.txt", "modded")));
+
+        string target = Path.Combine(_root, "corrupt-backup-target");
+        Directory.CreateDirectory(target);
+        string destination = Path.Combine(target, "a.txt");
+        File.WriteAllText(destination, "original");
+        manager.Install(mod, target);
+
+        InstalledFile installed = Assert.Single(mod.InstalledFiles);
+        string backup = Path.Combine(manager.BackupsDir, installed.Backup!.Replace('/', Path.DirectorySeparatorChar));
+        File.WriteAllText(backup, "damaged");
+
+        new DeploymentJournalStore(data).Write(new DeploymentJournal
+        {
+            Operation = DeploymentJournal.UninstallOperation,
+            Phase = DeploymentJournal.PreparePhase,
+            ModId = mod.Id,
+            ModName = mod.Name,
+            TargetDir = target,
+            InstallId = mod.InstallId ?? "",
+            Steps = { installed },
+        });
+
+        ModManager blocked = NewManager(data);
+        Assert.NotNull(blocked.RecoveryWarning);
+        Assert.Contains("damaged", blocked.RecoveryWarning, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("modded", File.ReadAllText(destination));
+
+        File.WriteAllText(backup, "original");
+        ModManager recovered = NewManager(data);
+        Assert.Null(recovered.RecoveryWarning);
+        Assert.Equal("original", File.ReadAllText(destination));
+        Assert.False(recovered.Get(mod.Id)!.Installed);
+    }
+
+    [Fact]
+    public void CommittedConfigRecoveryVerifiesTheWrittenFile()
+    {
+        string data = DataPath();
+        ModManager manager = NewManager(data);
+        var (mod, _) = manager.ImportPackage(Package("config-recovery", """
+        {"id":"config-recovery","name":"Config Recovery","settings":[{"key":"value","type":"text","default":"a"}],"config":{"file":"cfg.json"},"files":[{"source":"a.txt","destination":"a.txt"}]}
+        """, ("a.txt", "payload")));
+
+        string target = Path.Combine(_root, "config-target");
+        Directory.CreateDirectory(target);
+        manager.Install(mod, target);
+
+        InstalledFile config = Assert.Single(mod.InstalledFiles, file => file.Kind == "config");
+        string configPath = Path.Combine(target, config.Destination.Replace('/', Path.DirectorySeparatorChar));
+        string body = File.ReadAllText(configPath);
+
+        new DeploymentJournalStore(data).Write(new DeploymentJournal
+        {
+            Operation = DeploymentJournal.ConfigOperation,
+            Phase = DeploymentJournal.CommitPhase,
+            ModId = mod.Id,
+            ModName = mod.Name,
+            TargetDir = target,
+            InstallId = mod.InstallId ?? "",
+            Steps = { config },
+        });
+
+        File.Delete(configPath);
+        ModManager blocked = NewManager(data);
+        Assert.NotNull(blocked.RecoveryWarning);
+        Assert.Contains("missing", blocked.RecoveryWarning, StringComparison.OrdinalIgnoreCase);
+
+        File.WriteAllText(configPath, body);
+        ModManager recovered = NewManager(data);
+        Assert.Null(recovered.RecoveryWarning);
+        Assert.Contains(recovered.Get(mod.Id)!.InstalledFiles, file => file.Destination == "cfg.json");
+    }
+
+    [Fact]
+    public void LargeManifestAndManyEntriesAreAccepted()
+    {
+        string path = Path.Combine(_root, "many-entries.zip");
+        string description = new string('d', 1_200_000);
+        var files = Enumerable.Range(0, 1500)
+            .Select(index => new { source = $"p/{index}.txt", destination = $"p/{index}.txt" })
+            .ToArray();
+        string manifest = JsonSerializer.Serialize(new
+        {
+            id = "many-entries",
+            name = "Many Entries",
+            description,
+            files,
+        });
+
+        using (var archive = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            using (var writer = new StreamWriter(archive.CreateEntry(Packages.ManifestFileName).Open()))
+            {
+                writer.Write(manifest);
+            }
+
+            foreach (var file in files)
+            {
+                using var writer = new StreamWriter(archive.CreateEntry(file.source).Open());
+                writer.Write("x");
+            }
+        }
+
+        ModManager manager = NewManager(DataPath());
+        var (mod, info) = manager.ImportPackage(path);
+
+        Assert.True(info.HasManifest);
+        Assert.Equal(1501, info.Entries.Count);
+        Assert.Equal(1501, mod.FileCount);
+        Assert.True(File.Exists(Path.Combine(manager.ModsDir, mod.Package)));
     }
 
     private string DataPath()

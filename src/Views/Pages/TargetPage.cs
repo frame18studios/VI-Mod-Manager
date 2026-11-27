@@ -20,7 +20,7 @@ public partial class MainWindow
         intro.Children.Add(Ui.Kicker("DESTINATION FOLDER"));
         intro.Children.Add(Ui.Display("Choose where packages deploy."));
         intro.Children.Add(Ui.Muted(
-            "Select any writable folder you control. VI Mod Manager never launches external executables and treats all deployed files strictly as data.",
+            "Select any writable folder you control. VI Mod Manager does not execute package payloads and treats all deployed files strictly as data.",
             true));
         root.Children.Add(Ui.Panel(intro, "panel-accent"));
 
@@ -105,7 +105,7 @@ public partial class MainWindow
         }
 
         _targetPath.Text = path;
-        TargetFolderInfo info = _services.Workspace.Deployment.InspectTarget(path);
+        TargetFolderInfo info = _viewModel.InspectTarget(path);
         _targetInfo.Text = info.Message
             + $"\nTop-level files: {info.TopLevelFiles:N0}   ·   Top-level size: {FormatBytes(info.TopLevelBytes)}";
 

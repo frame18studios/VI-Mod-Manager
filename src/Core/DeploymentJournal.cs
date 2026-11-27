@@ -63,11 +63,18 @@ public sealed class DeploymentJournalStore
             using var stream = File.OpenRead(FilePath);
             return JsonSerializer.Deserialize<DeploymentJournal>(stream, Options);
         }
-        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
+        catch (JsonException exception)
         {
-            AppLog.Error("The deployment journal could not be read.", exception);
+            // Only a genuinely unreadable document is quarantined. A transient share/lock error
+            // must leave the journal in place so startup recovery can still resolve the operation.
+            AppLog.Error("The deployment journal is corrupt and was quarantined.", exception);
             Quarantine();
             return null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Warn("The deployment journal is temporarily unavailable: " + exception.Message);
+            throw;
         }
     }
 
