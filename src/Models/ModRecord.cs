@@ -44,6 +44,7 @@ public sealed class InstalledFile
 {
     public string Destination { get; set; } = "";
     public string? Backup { get; set; }
+    public string? BackupHash { get; set; }
     public string InstalledHash { get; set; } = "";
     public string Kind { get; set; } = "file";
 }

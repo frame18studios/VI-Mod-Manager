@@ -22,12 +22,50 @@ public sealed class CoreTests : IDisposable
     {
         try
         {
-            Directory.Delete(_root, true);
+            DeleteTree(_root);
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // Best effort cleanup for a temp directory.
         }
+    }
+
+    /// <summary>Deletes a tree without following junctions created by the safety tests.</summary>
+    private static void DeleteTree(string directory)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
+        {
+            FileAttributes attributes = File.GetAttributes(entry);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    Directory.Delete(entry);
+                }
+                else
+                {
+                    File.Delete(entry);
+                }
+
+                continue;
+            }
+
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                DeleteTree(entry);
+            }
+            else
+            {
+                File.Delete(entry);
+            }
+        }
+
+        Directory.Delete(directory);
     }
 
     private ModManager Manager()
@@ -429,5 +467,409 @@ public sealed class CoreTests : IDisposable
         Assert.Equal("Model", ModClassifier.Classify(new[] { "vehicles/car.fbx" }));
         Assert.Equal("Archive", ModClassifier.Classify(new[] { "common.pak" }));
         Assert.Equal("Other", ModClassifier.Classify(new[] { "readme.md" }));
+    }
+
+    [Fact]
+    public void SafeRelativeAllowsDoubleDotsInsideNamesButRejectsWindowsDeviceNames()
+    {
+        Assert.Equal("foo..bar/baz..txt", Paths.SafeRelative("foo..bar/baz..txt"));
+        Assert.Throws<PackageException>(() => Paths.SafeRelative("CON"));
+        Assert.Throws<PackageException>(() => Paths.SafeRelative("nul.txt"));
+        Assert.Throws<PackageException>(() => Paths.SafeRelative("dir/COM1.log"));
+        Assert.Throws<PackageException>(() => Paths.SafeRelative("bad?.txt"));
+        Assert.Throws<PackageException>(() => Paths.SafeRelative("trailing."));
+    }
+
+    [Fact]
+    public void FolderEnumerationKeepsDoubleDotsInsideFileNames()
+    {
+        string folder = Path.Combine(_root, "dots");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "foo..bar.txt"), "x");
+
+        Assert.Contains("foo..bar.txt", Packages.SafeFolderFiles(folder));
+    }
+
+    [Fact]
+    public void ResolveWithinRejectsJunctionsInsideTheRoot()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        string target = Path.Combine(_root, "junction-target");
+        string outside = Path.Combine(_root, "junction-outside");
+        Directory.CreateDirectory(target);
+        Directory.CreateDirectory(outside);
+        CreateJunction(Path.Combine(target, "mods"), outside);
+
+        Assert.Throws<PackageException>(() => Paths.ResolveWithin(target, "mods/evil.txt"));
+    }
+
+    [Fact]
+    public void InstallRejectsDestinationsRedirectedByAJunction()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        string manifest = """
+        {"id":"junction","name":"Junction","files":[
+          {"source":"evil.txt","destination":"mods/evil.txt"}
+        ]}
+        """;
+        ModManager manager = Manager();
+        var (mod, _) = manager.ImportPackage(Package("junction", manifest, ("evil.txt", "payload")));
+
+        string target = Path.Combine(_root, "junction-target");
+        string outside = Path.Combine(_root, "junction-outside");
+        Directory.CreateDirectory(target);
+        Directory.CreateDirectory(outside);
+        CreateJunction(Path.Combine(target, "mods"), outside);
+
+        Assert.Throws<PackageException>(() => manager.Install(mod, target));
+        Assert.False(File.Exists(Path.Combine(outside, "evil.txt")));
+        Assert.False(mod.Installed);
+    }
+
+    [Fact]
+    public void ImportRejectsDuplicateDestinationsBeforeStoringThePackage()
+    {
+        string manifest = """
+        {"id":"dupe","name":"Dupe","files":[
+          {"source":"a.txt","destination":"mods/data.txt"},
+          {"source":"b.txt","destination":"MODS/DATA.TXT"}
+        ]}
+        """;
+        ModManager manager = Manager();
+
+        Assert.Throws<PackageException>(() =>
+            manager.ImportPackage(Package("dupe", manifest, ("a.txt", "a"), ("b.txt", "b"))));
+        Assert.Empty(manager.Store.Current.Mods);
+        Assert.Empty(Directory.GetFiles(manager.ModsDir));
+    }
+
+    [Fact]
+    public void ImportRejectsConfigFileThatCollidesWithPayload()
+    {
+        string manifest = """
+        {"id":"collision","name":"Collision","config":{"file":"data.txt"},"files":[
+          {"source":"a.txt","destination":"data.txt"}
+        ]}
+        """;
+        ModManager manager = Manager();
+
+        Assert.Throws<PackageException>(() =>
+            manager.ImportPackage(Package("collision", manifest, ("a.txt", "a"))));
+        Assert.Empty(manager.Store.Current.Mods);
+    }
+
+    [Fact]
+    public void UninstallFailsWithoutClearingStateWhenABackupIsMissing()
+    {
+        string manifest = """
+        {"id":"nobackup","name":"No Backup","files":[
+          {"source":"a.txt","destination":"a.txt"}
+        ]}
+        """;
+        ModManager manager = Manager();
+        var (mod, _) = manager.ImportPackage(Package("nobackup", manifest, ("a.txt", "modded")));
+
+        string target = Path.Combine(_root, "target");
+        Directory.CreateDirectory(target);
+        string destination = Path.Combine(target, "a.txt");
+        File.WriteAllText(destination, "original");
+
+        manager.Install(mod, target);
+        var installed = Assert.Single(mod.InstalledFiles);
+        Assert.NotNull(installed.Backup);
+        File.Delete(Path.Combine(manager.BackupsDir, installed.Backup!.Replace('/', Path.DirectorySeparatorChar)));
+
+        Assert.Throws<InvalidOperationException>(() => manager.Uninstall(mod, target));
+        Assert.True(mod.Installed);
+        Assert.Single(mod.InstalledFiles);
+        Assert.Equal("modded", File.ReadAllText(destination));
+    }
+
+    [Fact]
+    public void UninstallPreflightsEveryFileBeforeRestoringAny()
+    {
+        string manifest = """
+        {"id":"preflight","name":"Preflight","files":[
+          {"source":"a.txt","destination":"a.txt"},
+          {"source":"b.txt","destination":"b.txt"}
+        ]}
+        """;
+        ModManager manager = Manager();
+        var (mod, _) = manager.ImportPackage(Package("preflight", manifest, ("a.txt", "A1"), ("b.txt", "B1")));
+
+        string target = Path.Combine(_root, "target");
+        Directory.CreateDirectory(target);
+        string a = Path.Combine(target, "a.txt");
+        string b = Path.Combine(target, "b.txt");
+        File.WriteAllText(a, "A0");
+        File.WriteAllText(b, "B0");
+
+        manager.Install(mod, target);
+        File.WriteAllText(b, "externally edited");
+
+        Assert.Throws<InvalidOperationException>(() => manager.Uninstall(mod, target));
+        Assert.Equal("A1", File.ReadAllText(a));
+        Assert.True(mod.Installed);
+    }
+
+    [Fact]
+    public void UninstallRejectsCorruptBackups()
+    {
+        string manifest = """
+        {"id":"corruptbackup","name":"Corrupt Backup","files":[
+          {"source":"a.txt","destination":"a.txt"}
+        ]}
+        """;
+        ModManager manager = Manager();
+        var (mod, _) = manager.ImportPackage(Package("corruptbackup", manifest, ("a.txt", "modded")));
+
+        string target = Path.Combine(_root, "target");
+        Directory.CreateDirectory(target);
+        string destination = Path.Combine(target, "a.txt");
+        File.WriteAllText(destination, "original");
+
+        manager.Install(mod, target);
+        var installed = Assert.Single(mod.InstalledFiles);
+        Assert.NotNull(installed.Backup);
+        string backupPath = Path.Combine(
+            manager.BackupsDir,
+            installed.Backup!.Replace('/', Path.DirectorySeparatorChar));
+        File.WriteAllText(backupPath, "corrupted");
+
+        Assert.Throws<InvalidOperationException>(() => manager.Uninstall(mod, target));
+        Assert.True(mod.Installed);
+        Assert.Equal("modded", File.ReadAllText(destination));
+    }
+
+    [Fact]
+    public void LargePayloadsAreNotArtificiallyCapped()
+    {
+        string body = new string('x', 4 * 1024 * 1024);
+        ModManager manager = Manager();
+        var (mod, _) = manager.ImportPackage(Package("large", null, ("assets/large.bin", body)));
+
+        string target = Path.Combine(_root, "target");
+        Directory.CreateDirectory(target);
+        manager.Install(mod, target);
+
+        Assert.Equal(body.Length, new FileInfo(Path.Combine(target, "assets", "large.bin")).Length);
+    }
+
+    [Fact]
+    public void PackageHashIsVerifiedBeforeDeployment()
+    {
+        string manifest = """
+        {"id":"tamper","name":"Tamper","files":[
+          {"source":"a.txt","destination":"a.txt"}
+        ]}
+        """;
+        ModManager manager = Manager();
+        var (mod, _) = manager.ImportPackage(Package("tamper", manifest, ("a.txt", "payload")));
+
+        string package = Path.Combine(manager.ModsDir, mod.Package);
+        using (var archive = ZipFile.Open(package, ZipArchiveMode.Update))
+        {
+            archive.CreateEntry("injected.txt");
+        }
+
+        string target = Path.Combine(_root, "target");
+        Directory.CreateDirectory(target);
+        Assert.Throws<InvalidOperationException>(() => manager.Install(mod, target));
+        Assert.False(File.Exists(Path.Combine(target, "a.txt")));
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task ConcurrentInstallsAreSerializedAndBothComplete()
+    {
+        ModManager manager = Manager();
+        var (first, _) = manager.ImportPackage(Package("first-concurrent", """
+        {"id":"first-concurrent","name":"First","files":[{"source":"a.txt","destination":"a.txt"}]}
+        """, ("a.txt", "ONE")));
+        var (second, _) = manager.ImportPackage(Package("second-concurrent", """
+        {"id":"second-concurrent","name":"Second","files":[{"source":"b.txt","destination":"b.txt"}]}
+        """, ("b.txt", "TWO")));
+
+        string target = Path.Combine(_root, "target");
+        Directory.CreateDirectory(target);
+        await System.Threading.Tasks.Task.WhenAll(
+            System.Threading.Tasks.Task.Run(() => manager.Install(first, target)),
+            System.Threading.Tasks.Task.Run(() => manager.Install(second, target)));
+
+        Assert.Equal("ONE", File.ReadAllText(Path.Combine(target, "a.txt")));
+        Assert.Equal("TWO", File.ReadAllText(Path.Combine(target, "b.txt")));
+        Assert.True(first.Installed);
+        Assert.True(second.Installed);
+    }
+
+    [Fact]
+    public void InterruptedInstallIsRolledBackOnNextStart()
+    {
+        ModManager manager = Manager();
+        var (mod, _) = manager.ImportPackage(Package("crash-install", """
+        {"id":"crash-install","name":"Crash Install","files":[{"source":"a.txt","destination":"a.txt"}]}
+        """, ("a.txt", "modded")));
+
+        string target = Path.Combine(_root, "target");
+        Directory.CreateDirectory(target);
+        string destination = Path.Combine(target, "a.txt");
+        File.WriteAllText(destination, "modded");
+
+        string installId = Guid.NewGuid().ToString("N");
+        string backupRelative = installId + "/a.txt";
+        string backupPath = Path.Combine(manager.BackupsDir, installId, "a.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
+        File.WriteAllText(backupPath, "original");
+
+        var journal = new DeploymentJournal
+        {
+            Operation = DeploymentJournal.InstallOperation,
+            Phase = DeploymentJournal.PreparePhase,
+            ModId = mod.Id,
+            ModName = mod.Name,
+            TargetDir = target,
+            InstallId = installId,
+            Steps =
+            {
+                new InstalledFile
+                {
+                    Destination = "a.txt",
+                    Backup = backupRelative,
+                    BackupHash = Hashing.Sha256File(backupPath),
+                    InstalledHash = Hashing.Sha256File(destination),
+                },
+            },
+        };
+        new DeploymentJournalStore(Path.GetDirectoryName(manager.Store.FilePath)!).Write(journal);
+
+        ModManager restarted = Manager();
+        Assert.Null(restarted.RecoveryWarning);
+        Assert.Equal("original", File.ReadAllText(destination));
+        Assert.False(restarted.Get(mod.Id)!.Installed);
+        Assert.False(File.Exists(Path.Combine(
+            Path.GetDirectoryName(manager.Store.FilePath)!,
+            "deployment-journal.json")));
+    }
+
+    [Fact]
+    public void CommittedInstallIsFinishedOnNextStart()
+    {
+        ModManager manager = Manager();
+        var (mod, _) = manager.ImportPackage(Package("crash-commit", """
+        {"id":"crash-commit","name":"Crash Commit","files":[{"source":"a.txt","destination":"a.txt"}]}
+        """, ("a.txt", "modded")));
+
+        string target = Path.Combine(_root, "target");
+        Directory.CreateDirectory(target);
+        string destination = Path.Combine(target, "a.txt");
+        File.WriteAllText(destination, "modded");
+
+        var journal = new DeploymentJournal
+        {
+            Operation = DeploymentJournal.InstallOperation,
+            Phase = DeploymentJournal.CommitPhase,
+            ModId = mod.Id,
+            ModName = mod.Name,
+            TargetDir = target,
+            InstallId = Guid.NewGuid().ToString("N"),
+            Steps =
+            {
+                new InstalledFile
+                {
+                    Destination = "a.txt",
+                    InstalledHash = Hashing.Sha256File(destination),
+                },
+            },
+        };
+        new DeploymentJournalStore(Path.GetDirectoryName(manager.Store.FilePath)!).Write(journal);
+
+        ModManager restarted = Manager();
+        Assert.Null(restarted.RecoveryWarning);
+        var recovered = restarted.Get(mod.Id)!;
+        Assert.True(recovered.Installed);
+        Assert.Single(recovered.InstalledFiles);
+        Assert.Equal("modded", File.ReadAllText(destination));
+    }
+
+    [Fact]
+    public void InterruptedUninstallIsCompletedOnNextStart()
+    {
+        ModManager manager = Manager();
+        var (mod, _) = manager.ImportPackage(Package("crash-uninstall", """
+        {"id":"crash-uninstall","name":"Crash Uninstall","files":[{"source":"a.txt","destination":"a.txt"}]}
+        """, ("a.txt", "modded")));
+
+        string target = Path.Combine(_root, "target");
+        Directory.CreateDirectory(target);
+        string destination = Path.Combine(target, "a.txt");
+        File.WriteAllText(destination, "modded");
+
+        string installId = Guid.NewGuid().ToString("N");
+        string backupRelative = installId + "/a.txt";
+        string backupPath = Path.Combine(manager.BackupsDir, installId, "a.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
+        File.WriteAllText(backupPath, "original");
+        var installed = new InstalledFile
+        {
+            Destination = "a.txt",
+            Backup = backupRelative,
+            BackupHash = Hashing.Sha256File(backupPath),
+            InstalledHash = Hashing.Sha256File(destination),
+        };
+        mod.Installed = true;
+        mod.InstalledFiles = new System.Collections.Generic.List<InstalledFile> { installed };
+        mod.InstallId = installId;
+        manager.Store.Save();
+
+        new DeploymentJournalStore(Path.GetDirectoryName(manager.Store.FilePath)!).Write(new DeploymentJournal
+        {
+            Operation = DeploymentJournal.UninstallOperation,
+            Phase = DeploymentJournal.PreparePhase,
+            ModId = mod.Id,
+            ModName = mod.Name,
+            TargetDir = target,
+            InstallId = installId,
+            Steps = { installed },
+        });
+
+        ModManager restarted = Manager();
+        Assert.Null(restarted.RecoveryWarning);
+        Assert.Equal("original", File.ReadAllText(destination));
+        Assert.False(restarted.Get(mod.Id)!.Installed);
+    }
+
+    [Fact]
+    public void ArchivesWithDuplicateEntryNamesAreRejected()
+    {
+        string path = Package("limit-duplicate-entry", null, ("a.txt", "1"), ("a.txt", "2"));
+        Assert.Throws<PackageException>(() => Packages.Inspect(path));
+    }
+
+    private static void CreateJunction(string link, string target)
+    {
+        var startInfo = new System.Diagnostics.ProcessStartInfo("cmd.exe")
+        {
+            Arguments = $"/c mklink /J \"{link}\" \"{target}\"",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+
+        using var process = System.Diagnostics.Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Could not start cmd.exe to create a test junction.");
+        string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        if (process.ExitCode != 0 || !Directory.Exists(link))
+        {
+            throw new InvalidOperationException($"Could not create a test junction: {output}");
+        }
     }
 }

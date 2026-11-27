@@ -49,6 +49,9 @@ public partial class MainWindow : Window
     private TextBlock _sideTargetPath = null!;
     private TextBlock _sideProfile = null!;
     private Border _statusDot = null!;
+    private Border _busyPill = null!;
+    private TextBlock _busyText = null!;
+    private int _busyCount;
 
     private StackPanel _modCards = null!;
     private StackPanel _detailPanel = null!;
@@ -79,6 +82,7 @@ public partial class MainWindow : Window
     private Slider _fontSizeSlider = null!;
     private TextBlock _fontSizeLabel = null!;
     private TextBlock _dataRootText = null!;
+    private TextBlock _logPathText = null!;
     private TextBlock _colorTokenName = null!;
     private TextBlock _colorTokenHelp = null!;
     private Border _colorPreview = null!;
@@ -166,7 +170,7 @@ public partial class MainWindow : Window
     {
         var brandText = Ui.VStack(3);
         brandText.Children.Add(Ui.Text("VI Mod Manager", null, false, 16.5, FontWeight.Bold));
-        var versionBadge = Ui.Badge("v0.1 · experimental", "accent");
+        var versionBadge = Ui.Badge($"{AppInfo.DisplayVersion} · {AppInfo.Channel}", "accent");
         versionBadge.Margin = new Thickness(0, 2, 0, 0);
         versionBadge.HorizontalAlignment = HorizontalAlignment.Left;
         brandText.Children.Add(versionBadge);
@@ -228,6 +232,9 @@ public partial class MainWindow : Window
         _sideProfile = Ui.Muted("No profile applied", true, 11.5);
         statusBody.Children.Add(_sideProfile);
         statusBody.Children.Add(Ui.Btn("Configure target →", () => Go(4), "link"));
+        var localOnly = Ui.Muted("Local only · no telemetry", false, 10.5);
+        localOnly.Margin = new Thickness(0, 6, 0, 0);
+        statusBody.Children.Add(localOnly);
 
         var grid = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
         grid.Children.Add(top);
@@ -274,9 +281,34 @@ public partial class MainWindow : Window
         Button deploy = Ui.BusyBtn("Deploy all", LoadAllAsync, "soft", "Deploy every enabled package in load order.");
         Button import = Ui.BusyBtn("Import", ImportAsync, "primary", "Import ZIP package, folder or single file.");
 
+        var busyBody = Ui.HStack(8);
+        busyBody.VerticalAlignment = VerticalAlignment.Center;
+        busyBody.Children.Add(new ProgressBar
+        {
+            IsIndeterminate = true,
+            Width = 52,
+            Height = 4,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        _busyText = Ui.Muted("Working…", false, 11.5);
+        _busyText.VerticalAlignment = VerticalAlignment.Center;
+        busyBody.Children.Add(_busyText);
+        _busyPill = new Border
+        {
+            Child = busyBody,
+            CornerRadius = new CornerRadius(9),
+            Padding = new Thickness(12, 7),
+            BorderThickness = new Thickness(1),
+            Background = Ui.Brush("AccentSoftBrush"),
+            BorderBrush = Ui.Brush("AccentLineBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            IsVisible = false,
+        };
+
         var actions = Ui.HStack(10);
         actions.VerticalAlignment = VerticalAlignment.Center;
         actions.HorizontalAlignment = HorizontalAlignment.Right;
+        actions.Children.Add(_busyPill);
         actions.Children.Add(_targetChipBorder);
         actions.Children.Add(deploy);
         actions.Children.Add(import);
@@ -295,6 +327,26 @@ public partial class MainWindow : Window
         Grid.SetColumnSpan(rule, 2);
         grid.Children.Add(rule);
         return grid;
+    }
+
+    private void BeginBusy(string message)
+    {
+        _busyCount++;
+        _busyText.Text = message;
+        _busyPill.IsVisible = true;
+        Cursor = new Cursor(StandardCursorType.Wait);
+    }
+
+    private void EndBusy()
+    {
+        _busyCount = Math.Max(0, _busyCount - 1);
+        if (_busyCount > 0 || _busyPill is null)
+        {
+            return;
+        }
+
+        _busyPill.IsVisible = false;
+        Cursor = new Cursor(StandardCursorType.Arrow);
     }
 
     private void Go(int index)

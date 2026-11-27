@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Only the latest `v*` release receives fixes. `v0.1` is an early, experimental release.
+Only the latest `v*` release receives fixes. `v0.2` is an early, experimental release.
 
 ## Reporting a vulnerability
 

@@ -7,6 +7,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using ViModManager.Core;
 
 namespace ViModManager.Views;
 
@@ -37,6 +38,33 @@ public partial class MainWindow
         intro.Children.Add(pills);
 
         root.Children.Add(Ui.Panel(intro, "panel-accent"));
+
+        // v0.2 safety posture: make the guarantees visible, not only documented.
+        var safetyBody = Ui.VStack(12);
+        safetyBody.Children.Add(Ui.SectionHeader("Safety & integrity", $"{AppInfo.DisplayVersion} local-first guarantees"));
+        var safetyGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"),
+        };
+        AddSafetyTile(safetyGrid, 0, 0, Icons.Check, "Path jail",
+            "Every destination is re-resolved; symlinks and junctions are rejected.");
+        AddSafetyTile(safetyGrid, 0, 1, Icons.Check, "Collision-free plan",
+            "Duplicate and config-file destinations are rejected case-insensitively.");
+        AddSafetyTile(safetyGrid, 1, 0, Icons.Check, "SHA-256 integrity",
+            "Packages are verified before deploy; backups are verified before restore.");
+        AddSafetyTile(safetyGrid, 1, 1, Icons.History, "Crash-safe journal",
+            "Interrupted deploys are rolled back or completed on the next launch.");
+        AddSafetyTile(safetyGrid, 2, 0, Icons.Check, "Atomic writes",
+            "Config and library records use a temp file followed by an atomic move.");
+        AddSafetyTile(safetyGrid, 2, 1, Icons.Deploy, "No size caps",
+            "Large assets stream to disk without artificial GiB, count, or ratio limits.");
+        AddSafetyTile(safetyGrid, 3, 0, Icons.History, "Local-only audit log",
+            "Operation logs stay in data/logs; nothing is uploaded or telemetered.");
+        AddSafetyTile(safetyGrid, 3, 1, Icons.Library, "Data, not code",
+            "Payloads are opaque bytes and manifests are plain JSON. Nothing executes.");
+        safetyBody.Children.Add(safetyGrid);
+        root.Children.Add(Ui.Panel(safetyBody, "panel"));
 
         // Live Stats Grid
         var pulseBody = Ui.VStack(14);
@@ -95,6 +123,21 @@ public partial class MainWindow
         grid.Children.Add(tile);
     }
 
+    private static void AddSafetyTile(Grid grid, int row, int column, string icon, string title, string detail)
+    {
+        var body = Ui.VStack(4);
+        var header = Ui.HStack(8);
+        header.Children.Add(Icons.Tinted(icon, 15, "AccentBrush"));
+        header.Children.Add(Ui.Text(title, null, false, 12.5, FontWeight.SemiBold));
+        body.Children.Add(header);
+        body.Children.Add(Ui.Muted(detail, true, 11.5));
+        var tile = Ui.Inset(body, new Thickness(14, 11));
+        tile.Margin = new Thickness(column == 0 ? 0 : 6, 0, column == 0 ? 6 : 0, 8);
+        Grid.SetRow(tile, row);
+        Grid.SetColumn(tile, column);
+        grid.Children.Add(tile);
+    }
+
     private void RefreshOverview()
     {
         var mods = _services.Manager.ListMods();
@@ -105,6 +148,27 @@ public partial class MainWindow
 
         Ui.Clear(_healthContainer);
         var checks = new List<(string Text, string? ActionLabel, Action? Action, bool IsWarning)>();
+
+        if (_services.Manager.RecoveryWarning is { } recovery)
+        {
+            Action openLog = () =>
+            {
+                string? log = AppLog.FilePath;
+                if (log is not null)
+                {
+                    OpenFolderInExplorer(Path.GetDirectoryName(log)!);
+                }
+                else
+                {
+                    Go(6);
+                }
+            };
+            checks.Add((
+                "An interrupted operation needs attention: " + recovery,
+                "Open log →",
+                openLog,
+                true));
+        }
 
         if (mods.Count == 0)
         {

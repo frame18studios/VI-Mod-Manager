@@ -1,10 +1,12 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using ViModManager.Core;
 using ViModManager.Models;
 
 namespace ViModManager.Views;
@@ -227,6 +229,29 @@ public partial class MainWindow
         storageBody.Children.Add(reset);
         root.Children.Add(storageCard);
 
+        var (aboutCard, aboutBody) = SectionCard("Build & local audit log", "Version, signing status, and operation history");
+        aboutBody.Children.Add(Ui.Kicker(AppInfo.DisplayVersion + " · " + AppInfo.Channel));
+        aboutBody.Children.Add(Ui.Muted(AppInfo.SigningStatus, true, 11.5));
+        aboutBody.Children.Add(Ui.Rule(6, 4));
+        var logRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        _logPathText = Ui.Mono(AppLog.FilePath ?? "Logging is not configured.", true);
+        logRow.Children.Add(Ui.Inset(_logPathText, new Thickness(14, 11)));
+        var openLogs = Ui.Btn("Open logs", () =>
+        {
+            string? log = AppLog.FilePath;
+            string folder = log is null ? _services.Root : Path.GetDirectoryName(log) ?? _services.Root;
+            OpenFolderInExplorer(folder);
+        }, "soft chip", "Open the local audit log folder in File Explorer");
+        openLogs.Margin = new Thickness(10, 0, 0, 0);
+        openLogs.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(openLogs, 1);
+        logRow.Children.Add(openLogs);
+        aboutBody.Children.Add(logRow);
+        aboutBody.Children.Add(Ui.Muted(
+            "Logs record local deployment and recovery events only. Nothing is uploaded and no telemetry is collected.",
+            true, 11.5));
+        root.Children.Add(aboutCard);
+
         return PageScroller(root);
     }
 
@@ -293,6 +318,7 @@ public partial class MainWindow
         _fontSizeLabel.Text = $"{settings.FontSize} px";
         _suppressFontEvent = false;
         _dataRootText.Text = _services.Root;
+        _logPathText.Text = AppLog.FilePath ?? "Logging is not configured.";
         RefreshColorEditor(settings);
     }
 

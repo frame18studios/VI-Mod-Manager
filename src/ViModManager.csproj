@@ -8,7 +8,10 @@
     <AssemblyName>ViModManager</AssemblyName>
     <RootNamespace>ViModManager</RootNamespace>
     <Product>VI Mod Manager</Product>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
+    <FileVersion>0.2.0.0</FileVersion>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+
     <Description>General-purpose local package library and reversible file-deployment workbench.</Description>
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationIcon>Assets/vimm-icon.ico</ApplicationIcon>

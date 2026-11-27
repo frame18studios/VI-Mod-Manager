@@ -118,9 +118,15 @@ A manifest is plain data. It cannot execute code, install services, create sched
 Every relative path (`files[].source`, `files[].destination`, `config.file`, and auto-detected ZIP entries) is validated against the target folder and rejected if it:
 
 - Is empty, absolute, or begins with `/` or a drive letter (`C:`);
-- Contains `.` or `..` traversal segments;
-- Resolves outside the chosen target directory after normalization.
+- Contains `.` or `..` traversal segments, Windows-reserved device names, or invalid filename characters;
+- Resolves outside the chosen target directory after normalization;
+- Passes through an existing symbolic link or junction inside the target folder;
+- Duplicates another destination in the same package, including the generated `config.file` destination (compared case-insensitively, as Windows does).
 
-Before replacing any existing file in the target folder, VI Mod Manager copies the original into `backups/<install-id>/` and records the deployed file's SHA-256 hash. On unload, backups are restored only if the deployed file has not been modified outside the manager.
+ZIP archives are checked only for structural ambiguity: duplicate entry names are rejected because they would make a destination plan ambiguous. There are no artificial compressed-size, expanded-size, per-entry, entry-count, manifest-size, or compression-ratio caps. Payload bytes stream directly to disk, so a 70 GB asset is handled the same way as a small file, subject only to available disk space and the filesystem. Manifests are read as UTF-8 JSON; a manifest that is not valid JSON is rejected without executing anything.
+
+Before replacing any existing file in the target folder, VI Mod Manager copies the original into `backups/<install-id>/` and records both the original backup hash and the deployed file's SHA-256 hash. The stored package hash is verified before any file is written; a changed archive is refused until it is re-imported. On unload, every file is preflighted first. If the deployed file was modified outside the manager, or a required backup is missing or damaged, the unload is refused and the deployment record is kept so no files are stranded.
+
+Every destructive step is recorded in a local `deployment-journal.json` before a destination is touched. On the next launch, an interrupted install is rolled back (before commit) or completed (after commit), and interrupted unloads or config writes are finished. If recovery cannot verify a safe state, the journal is kept and the UI shows a warning instead of risking a partial deployment.
 
 The manifest above is the exact manifest used by [`examples/example-package-demo.zip`](../examples/example-package-demo.zip), a harmless text-and-JSON reference package.

@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -30,12 +30,22 @@ public sealed class ModManager
 {
     private static readonly JsonSerializerOptions ConfigJson = new() { WriteIndented = true };
 
+    private readonly object _operationGate = new();
+    private readonly object _stateGate = new();
+    private readonly DeploymentJournalStore _journal;
+
     public JsonStore<ModDatabase> Store { get; }
     public JsonStore<HistoryDatabase> History { get; }
     public JsonStore<ProfileDatabase>? Profiles { get; }
     public string ModsDir { get; }
     public string BackupsDir { get; }
     public PackageCache Cache { get; } = new();
+
+    /// <summary>
+    /// Set when a previously interrupted operation could not be resolved automatically. The UI
+    /// surfaces this so the user knows why a deployment is being refused.
+    /// </summary>
+    public string? RecoveryWarning { get; private set; }
 
     public ModManager(
         JsonStore<ModDatabase> store,
@@ -51,11 +61,215 @@ public sealed class ModManager
         BackupsDir = Path.GetFullPath(backupsDir);
         Directory.CreateDirectory(ModsDir);
         Directory.CreateDirectory(BackupsDir);
+
+        string dataDir = Path.GetDirectoryName(Store.FilePath)
+            ?? throw new InvalidOperationException("The library database has no parent directory.");
+        _journal = new DeploymentJournalStore(dataDir);
+        AppLog.Configure(Path.Combine(dataDir, "logs"));
+        RecoverPendingOperation();
+    }
+
+    // --------------------------------------------------------------- coordination
+    private IDisposable EnterOperation()
+    {
+        Monitor.Enter(_operationGate);
+        return new OperationScope(_operationGate);
+    }
+
+    private sealed class OperationScope : IDisposable
+    {
+        private readonly object _gate;
+        private bool _released;
+
+        public OperationScope(object gate) => _gate = gate;
+
+        public void Dispose()
+        {
+            if (_released)
+            {
+                return;
+            }
+
+            _released = true;
+            Monitor.Exit(_gate);
+        }
+    }
+
+    private List<ModRecord> SnapshotMods()
+    {
+        lock (_stateGate)
+        {
+            return Store.Current.Mods.ToList();
+        }
+    }
+
+    private void EnsureRecovered()
+    {
+        if (RecoveryWarning is null)
+        {
+            return;
+        }
+
+        // A retry may succeed after a transient lock or removable-drive problem disappeared.
+        RecoverPendingOperation();
+        if (RecoveryWarning is not null)
+        {
+            throw new InvalidOperationException(
+                "An interrupted deployment needs attention before new changes can be made: " + RecoveryWarning);
+        }
+    }
+
+    /// <summary>
+    /// Resolves the single pending journal left by a crash or forced shutdown. Installs that had
+    /// not committed are rolled back; uninstalls and config writes are completed because their
+    /// intent is already durable. The journal remains in place if recovery cannot finish safely.
+    /// </summary>
+    private void RecoverPendingOperation()
+    {
+        DeploymentJournal? journal = _journal.Read();
+        if (journal is null)
+        {
+            RecoveryWarning = null;
+            return;
+        }
+
+        try
+        {
+            switch (journal.Operation)
+            {
+                case DeploymentJournal.InstallOperation:
+                    RecoverInstall(journal);
+                    break;
+                case DeploymentJournal.UninstallOperation:
+                    RecoverUninstall(journal);
+                    break;
+                case DeploymentJournal.ConfigOperation:
+                    RecoverConfig(journal);
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        $"The deployment journal contains an unknown operation: {journal.Operation}");
+            }
+
+            _journal.Delete();
+            RecoveryWarning = null;
+            if (!string.IsNullOrWhiteSpace(journal.ModName))
+            {
+                AppLog.Warn(
+                    $"Recovered interrupted {journal.Operation} for '{journal.ModName}' ({journal.Steps.Count} file(s)).");
+                AddHistory("Recovered", journal.ModName, $"{journal.Operation} · {journal.Steps.Count} file(s)");
+            }
+        }
+        catch (Exception exception)
+        {
+            RecoveryWarning =
+                $"Interrupted {journal.Operation} for '{journal.ModName}' could not be recovered automatically: {exception.Message}";
+            AppLog.Error(RecoveryWarning, exception);
+        }
+    }
+
+    private void RecoverInstall(DeploymentJournal journal)
+    {
+        if (journal.Phase == DeploymentJournal.CommitPhase)
+        {
+            ModRecord? mod = Get(journal.ModId);
+            if (mod is null)
+            {
+                throw new InvalidOperationException(
+                    "The deployed files were committed, but the package record is missing from the library.");
+            }
+
+            foreach (var step in journal.Steps)
+            {
+                string destination = Paths.ResolveWithin(journal.TargetDir, step.Destination);
+                if (!File.Exists(destination))
+                {
+                    throw new InvalidOperationException(
+                        $"The committed deployment is missing {step.Destination}.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(step.InstalledHash)
+                    && !string.Equals(
+                        Hashing.Sha256File(destination),
+                        step.InstalledHash,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        $"{step.Destination} changed after the interrupted deployment.");
+                }
+            }
+
+            mod.Installed = true;
+            mod.InstalledFiles = journal.Steps;
+            mod.InstallId = journal.InstallId;
+            mod.LoadedAt ??= DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+            Store.Save();
+            return;
+        }
+
+        var failures = Rollback(journal.Steps, journal.TargetDir);
+        if (failures.Count > 0)
+        {
+            throw new InvalidOperationException(string.Join(" ", failures));
+        }
+    }
+
+    private void RecoverUninstall(DeploymentJournal journal)
+    {
+        if (journal.Phase == DeploymentJournal.PreparePhase)
+        {
+            var (_, failures) = RestoreUninstallSteps(journal.Steps, journal.TargetDir);
+            if (failures.Count > 0)
+            {
+                throw new InvalidOperationException(string.Join(" ", failures));
+            }
+        }
+
+        ModRecord? mod = Get(journal.ModId);
+        if (mod is null)
+        {
+            return;
+        }
+
+        mod.Installed = false;
+        mod.InstalledFiles = new List<InstalledFile>();
+        mod.InstallId = null;
+        mod.LoadedAt = null;
+        Store.Save();
+    }
+
+    private void RecoverConfig(DeploymentJournal journal)
+    {
+        if (journal.Phase == DeploymentJournal.PreparePhase)
+        {
+            var failures = Rollback(journal.Steps, journal.TargetDir);
+            if (failures.Count > 0)
+            {
+                throw new InvalidOperationException(string.Join(" ", failures));
+            }
+
+            return;
+        }
+
+        ModRecord? mod = Get(journal.ModId);
+        if (mod is null)
+        {
+            throw new InvalidOperationException(
+                "The config file was committed, but the package record is missing from the library.");
+        }
+
+        foreach (var step in journal.Steps)
+        {
+            mod.InstalledFiles.RemoveAll(file => file.Destination == step.Destination);
+            mod.InstalledFiles.Add(step);
+        }
+
+        Store.Save();
     }
 
     // ------------------------------------------------------------------ library
     public List<ModRecord> ListMods() =>
-        Store.Current.Mods
+        SnapshotMods()
             .OrderBy(mod => mod.Priority)
             .ThenBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -64,10 +278,13 @@ public sealed class ModManager
         ListMods().Where(mod => mod.Enabled).ToList();
 
     public ModRecord? Get(string? id) =>
-        id is null ? null : Store.Current.Mods.FirstOrDefault(mod => mod.Id == id);
+        id is null ? null : SnapshotMods().FirstOrDefault(mod => mod.Id == id);
 
     public (ModRecord Record, PackageContents Info) ImportPackage(string packagePath)
     {
+        using var operation = EnterOperation();
+        EnsureRecovered();
+
         if (string.IsNullOrWhiteSpace(packagePath))
         {
             throw new PackageException("Choose a package file or folder first.");
@@ -93,6 +310,11 @@ public sealed class ModManager
             string? manifestPath = Packages.FindManifestFile(packagePath);
             if (manifestPath is not null)
             {
+                if (Paths.IsReparsePoint(manifestPath))
+                {
+                    throw new PackageException("The package manifest cannot be a symbolic link or junction.");
+                }
+
                 manifest = Packages.ReadManifestFile(manifestPath);
                 info.Manifest = manifest;
             }
@@ -106,6 +328,33 @@ public sealed class ModManager
         {
             // A single loose file is a valid one-file package: texture, model, script, archive — anything.
             info.Entries.Add(Path.GetFileName(packagePath));
+        }
+
+        // Validate the complete destination plan before the package is copied into the library,
+        // so a rejected import cannot leave an orphaned archive or a half-registered record.
+        List<PackageFile> plannedFiles;
+        if (manifest is not null)
+        {
+            plannedFiles = Packages.Files(manifest);
+        }
+        else if (zip)
+        {
+            plannedFiles = Packages.AutoFiles(packagePath);
+        }
+        else if (folder)
+        {
+            plannedFiles = info.Entries
+                .Select(relative => new PackageFile(relative, relative))
+                .ToList();
+            Packages.ValidateDestinations(plannedFiles);
+        }
+        else
+        {
+            string fileName = Path.GetFileName(packagePath);
+            plannedFiles = new List<PackageFile>
+            {
+                new(Paths.SafeRelative(fileName), Paths.SafeRelative(fileName)),
+            };
         }
 
         string requestedId = Text(manifest?["id"]) ?? "";
@@ -123,7 +372,8 @@ public sealed class ModManager
 
         // Resolve collisions before storing anything: overwriting an existing package
         // would silently corrupt the mod that already owns that id.
-        if (Store.Current.Mods.Any(mod => mod.Id == id))
+        var existing = SnapshotMods();
+        if (existing.Any(mod => mod.Id == id))
         {
             id = $"{id}-{Guid.NewGuid().ToString("N")[..6]}";
         }
@@ -148,16 +398,7 @@ public sealed class ModManager
             Packages.WrapFile(packagePath, destination);
         }
 
-        List<PackageFile> files;
-        try
-        {
-            files = manifest is not null ? Packages.Files(manifest) : Packages.AutoFiles(destination);
-        }
-        catch (PackageException)
-        {
-            files = new List<PackageFile>();
-        }
-
+        List<PackageFile> files = plannedFiles;
         bool autoDeploy = manifest is null && files.Count > 0;
 
         var record = new ModRecord
@@ -181,17 +422,34 @@ public sealed class ModManager
             Kind = ModClassifier.Classify(manifest, info.Entries),
             FileCount = info.Entries.Count,
             Sha256 = Hashing.Sha256File(destination),
-            Priority = Store.Current.Mods.Count == 0 ? 0 : Store.Current.Mods.Max(mod => mod.Priority) + 1,
+            Priority = existing.Count == 0 ? 0 : existing.Max(mod => mod.Priority) + 1,
         };
 
-        Store.Current.Mods.Add(record);
-        Store.Save();
+        lock (_stateGate)
+        {
+            Store.Current.Mods.Add(record);
+            try
+            {
+                Store.Save();
+            }
+            catch
+            {
+                // Do not leave an in-memory record or an orphaned archive behind a failed save.
+                Store.Current.Mods.Remove(record);
+                Cache.Invalidate(destination);
+                TryDelete(destination);
+                throw;
+            }
+        }
+
+        AppLog.Info($"Imported '{record.Name}' as {record.Id} ({info.Entries.Count} entries).");
         AddHistory("Imported", record.Name, $"{info.Entries.Count} item(s) · {record.Kind}");
         return (record, info);
     }
 
     public void Toggle(ModRecord mod, bool enabled)
     {
+        using var operation = EnterOperation();
         mod.Enabled = enabled;
         Store.Save();
         AddHistory(enabled ? "Enabled" : "Disabled", mod.Name);
@@ -199,6 +457,7 @@ public sealed class ModManager
 
     public void Rename(ModRecord mod, string name)
     {
+        using var operation = EnterOperation();
         name = name.Trim();
         if (name.Length == 0)
         {
@@ -212,6 +471,7 @@ public sealed class ModManager
 
     public bool Move(ModRecord mod, int delta)
     {
+        using var operation = EnterOperation();
         var mods = ListMods();
         int index = mods.FindIndex(candidate => candidate.Id == mod.Id);
         if (index < 0)
@@ -238,6 +498,7 @@ public sealed class ModManager
 
     public bool MoveTo(ModRecord mod, int target)
     {
+        using var operation = EnterOperation();
         var mods = ListMods();
         int index = mods.FindIndex(candidate => candidate.Id == mod.Id);
         if (index < 0)
@@ -265,20 +526,36 @@ public sealed class ModManager
 
     public void Remove(ModRecord mod)
     {
+        using var operation = EnterOperation();
+        EnsureRecovered();
+
         if (mod.Installed)
         {
             throw new InvalidOperationException("Unload this mod before removing it from the library.");
         }
 
         string package = Path.Combine(ModsDir, mod.Package);
-        Cache.Invalidate(package);
-        if (File.Exists(package))
+        lock (_stateGate)
         {
-            File.Delete(package);
+            Store.Current.Mods.RemoveAll(candidate => candidate.Id == mod.Id);
+            Store.Save();
         }
 
-        Store.Current.Mods.RemoveAll(candidate => candidate.Id == mod.Id);
-        Store.Save();
+        Cache.Invalidate(package);
+        try
+        {
+            if (File.Exists(package))
+            {
+                File.Delete(package);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The record is already gone; an orphaned archive is harmless and can be cleaned up manually.
+            AppLog.Warn($"Could not delete package archive '{package}': {exception.Message}");
+        }
+
+        AppLog.Info($"Removed '{mod.Name}' from the library.");
         AddHistory("Removed", mod.Name);
     }
 
@@ -286,7 +563,7 @@ public sealed class ModManager
     {
         var owners = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var conflicts = new List<Conflict>();
-        foreach (var mod in Store.Current.Mods.Where(mod => mod.Enabled && (mod.HasManifest || mod.AutoDeploy)))
+        foreach (var mod in SnapshotMods().Where(mod => mod.Enabled && (mod.HasManifest || mod.AutoDeploy)))
         {
             JsonObject? manifest = ManifestFor(mod);
             if (manifest is null)
@@ -294,7 +571,17 @@ public sealed class ModManager
                 continue;
             }
 
-            List<PackageFile> files = FilesFor(mod);
+            List<PackageFile> files;
+            try
+            {
+                files = FilesFor(mod);
+            }
+            catch (PackageException)
+            {
+                // A damaged or manually edited package cannot claim destinations.
+                continue;
+            }
+
             if (files.Count == 0)
             {
                 continue;
@@ -340,14 +627,7 @@ public sealed class ModManager
         var manifest = ManifestFor(mod);
         if (manifest is not null)
         {
-            try
-            {
-                return Packages.Files(manifest);
-            }
-            catch (PackageException)
-            {
-                return new List<PackageFile>();
-            }
+            return Packages.Files(manifest);
         }
 
         if (!mod.AutoDeploy)
@@ -358,22 +638,25 @@ public sealed class ModManager
         var files = new List<PackageFile>();
         foreach (var file in mod.AutoFiles)
         {
-            try
-            {
-                files.Add(new PackageFile(Paths.SafeRelative(file.Source), Paths.SafeRelative(file.Destination)));
-            }
-            catch (PackageException)
-            {
-                // Stored auto paths were validated at import; skip anything manually corrupted.
-            }
+            files.Add(new PackageFile(Paths.SafeRelative(file.Source), Paths.SafeRelative(file.Destination)));
         }
 
+        Packages.ValidateDestinations(files);
         return files;
     }
 
     public string DeployableSummary(ModRecord mod)
     {
-        int count = FilesFor(mod).Count;
+        int count;
+        try
+        {
+            count = FilesFor(mod).Count;
+        }
+        catch (PackageException)
+        {
+            return "Invalid file mapping";
+        }
+
         if (mod.HasManifest)
         {
             return $"{count} declared file(s)";
@@ -400,6 +683,7 @@ public sealed class ModManager
 
     public void SaveConfig(ModRecord mod, IReadOnlyDictionary<string, string> values)
     {
+        using var operation = EnterOperation();
         var schema = SchemaFor(mod);
         var declared = schema.ToDictionary(field => field.Key, StringComparer.Ordinal);
         var cleaned = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -432,6 +716,7 @@ public sealed class ModManager
 
     public void ResetConfig(ModRecord mod)
     {
+        using var operation = EnterOperation();
         mod.Config = new Dictionary<string, string>();
         Store.Save();
         AddHistory("Variables reset", mod.Name);
@@ -440,6 +725,9 @@ public sealed class ModManager
     // ---------------------------------------------------------------- deployment
     public int Install(ModRecord mod, string targetDir)
     {
+        using var operation = EnterOperation();
+        EnsureRecovered();
+
         string root = Path.GetFullPath(targetDir);
         if (!Directory.Exists(root))
         {
@@ -468,57 +756,135 @@ public sealed class ModManager
             throw new InvalidOperationException("This package contains no deployable files.");
         }
 
+        string package = Path.Combine(ModsDir, mod.Package);
+        VerifyPackageIntegrity(mod, package);
+
         string installId = Guid.NewGuid().ToString("N");
         string backupRoot = Path.Combine(BackupsDir, installId);
         var installed = new List<InstalledFile>();
+        var journal = new DeploymentJournal
+        {
+            Operation = DeploymentJournal.InstallOperation,
+            Phase = DeploymentJournal.PreparePhase,
+            ModId = mod.Id,
+            ModName = mod.Name,
+            TargetDir = root,
+            InstallId = installId,
+            StartedAt = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+        };
 
-        string package = Path.Combine(ModsDir, mod.Package);
+        AppLog.Info($"Deploy started for '{mod.Name}' ({mod.Id}) into {root}.");
+        _journal.Write(journal);
+
         try
         {
-            using (var archive = ZipFile.OpenRead(package))
+            using (var archive = Packages.OpenArchive(package))
             {
+                var entries = new Dictionary<string, System.IO.Compression.ZipArchiveEntry>(
+                    StringComparer.OrdinalIgnoreCase);
+                foreach (var entry in archive.Entries)
+                {
+                    if (entry.Name.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    entries[entry.FullName.Replace('\\', '/')] = entry;
+                }
+
+                // Preflight the whole plan before writing anything. A missing source should abort
+                // before a single destination has been replaced.
                 foreach (var file in files)
                 {
-                    var entry = archive.Entries.FirstOrDefault(candidate =>
-                        string.Equals(candidate.FullName.Replace('\\', '/'), file.Source, StringComparison.OrdinalIgnoreCase))
-                        ?? throw new PackageException($"Package is missing source file: {file.Source}");
+                    if (!entries.ContainsKey(file.Source))
+                    {
+                        throw new PackageException($"Package is missing source file: {file.Source}");
+                    }
 
+                    _ = Paths.ResolveWithin(root, file.Destination);
+                    _ = Paths.ResolveWithin(backupRoot, file.Destination);
+                }
+
+                foreach (var file in files)
+                {
+                    var entry = entries[file.Source];
                     string destination = Paths.ResolveWithin(root, file.Destination);
                     Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
 
                     string? backup = null;
+                    string? backupHash = null;
                     if (File.Exists(destination))
                     {
-                        string backupPath = Path.Combine(backupRoot, file.Destination.Replace('/', Path.DirectorySeparatorChar));
+                        string backupPath = Paths.ResolveWithin(backupRoot, file.Destination);
                         Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
+                        string originalHash = Hashing.Sha256File(destination);
                         File.Copy(destination, backupPath, true);
                         backup = Path.GetRelativePath(BackupsDir, backupPath).Replace('\\', '/');
+                        backupHash = Hashing.Sha256File(backupPath);
+                        if (!string.Equals(originalHash, backupHash, StringComparison.OrdinalIgnoreCase))
+                        {
+                            throw new IOException($"Backup verification failed for {file.Destination}.");
+                        }
                     }
 
-                    string temp = destination + ".vmm-tmp";
-                    entry.ExtractToFile(temp, true);
-                    File.Move(temp, destination, true);
-                    installed.Add(new InstalledFile
+                    // Register the file and persist the journal before the destructive move. If the
+                    // process dies after this point, startup recovery can still restore the original.
+                    var record = new InstalledFile
                     {
                         Destination = file.Destination,
                         Backup = backup,
-                        InstalledHash = Hashing.Sha256File(destination),
-                    });
+                        BackupHash = backupHash,
+                    };
+                    installed.Add(record);
+                    journal.Steps.Add(record);
+                    _journal.Write(journal);
+
+                    string temp = destination + ".vmm-tmp";
+                    try
+                    {
+                        // Revalidate right before each write: shortens the window for a link swap
+                        // between the initial check and the actual filesystem operation.
+                        destination = Paths.ResolveWithin(root, file.Destination);
+                        Packages.ExtractEntryToFile(entry, temp);
+
+                        destination = Paths.ResolveWithin(root, file.Destination);
+                        File.Move(temp, destination, true);
+                        record.InstalledHash = Hashing.Sha256File(destination);
+                    }
+                    finally
+                    {
+                        TryDelete(temp);
+                    }
                 }
             }
 
             if (manifest is not null)
             {
-                var config = WriteConfig(mod, manifest, root, backupRoot, backupExisting: true);
-                if (config is not null)
-                {
-                    installed.Add(config);
-                }
+                WriteConfig(
+                    mod,
+                    manifest,
+                    root,
+                    backupRoot,
+                    backupExisting: true,
+                    transaction: installed,
+                    journal: journal);
             }
+
+            journal.Phase = DeploymentJournal.CommitPhase;
+            _journal.Write(journal);
         }
-        catch
+        catch (Exception exception)
         {
-            Rollback(installed, root);
+            AppLog.Error($"Deploy failed for '{mod.Name}'.", exception);
+            var failures = Rollback(installed, root);
+            if (failures.Count > 0)
+            {
+                RecoveryWarning =
+                    $"Deployment failed and {failures.Count} file(s) could not be restored: {string.Join(" ", failures)}";
+                throw new InvalidOperationException(RecoveryWarning, exception);
+            }
+
+            _journal.Delete();
             throw;
         }
 
@@ -526,13 +892,50 @@ public sealed class ModManager
         mod.InstalledFiles = installed;
         mod.InstallId = installId;
         mod.LoadedAt = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
-        Store.Save();
+        try
+        {
+            Store.Save();
+        }
+        catch (Exception exception)
+        {
+            RecoveryWarning =
+                "Files were deployed, but the library record could not be saved. Restart VI Mod Manager to finish recovery.";
+            AppLog.Error($"Deploy commit failed for '{mod.Name}'.", exception);
+            throw new InvalidOperationException(RecoveryWarning, exception);
+        }
+
+        _journal.Delete();
+        AppLog.Info($"Deploy complete for '{mod.Name}': {installed.Count} file(s).");
         AddHistory("Deployed", mod.Name, $"{installed.Count} file(s)");
         return installed.Count;
     }
 
+    private static void VerifyPackageIntegrity(ModRecord mod, string package)
+    {
+        if (!File.Exists(package))
+        {
+            throw new PackageException("The package archive is missing from the library folder.");
+        }
+
+        if (string.IsNullOrWhiteSpace(mod.Sha256))
+        {
+            // Records created by older builds did not always store a package hash.
+            return;
+        }
+
+        string actual = Hashing.Sha256File(package);
+        if (!string.Equals(actual, mod.Sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "The package archive changed after it was imported. Remove and re-import it before deploying.");
+        }
+    }
+
     public string ApplyConfig(ModRecord mod, string targetDir)
     {
+        using var operation = EnterOperation();
+        EnsureRecovered();
+
         string root = Path.GetFullPath(targetDir);
         if (!Directory.Exists(root))
         {
@@ -549,22 +952,78 @@ public sealed class ModManager
         mod.InstallId ??= Guid.NewGuid().ToString("N");
         string backupRoot = Path.Combine(BackupsDir, mod.InstallId);
         var existing = mod.InstalledFiles.FirstOrDefault(file => file.Kind == "config");
-        var entry = WriteConfig(mod, manifest, root, backupRoot, backupExisting: existing is null)
-            ?? throw new InvalidOperationException("The config file could not be written.");
-        if (existing?.Backup is not null)
+        var journal = new DeploymentJournal
         {
-            entry.Backup = existing.Backup;
+            Operation = DeploymentJournal.ConfigOperation,
+            Phase = DeploymentJournal.PreparePhase,
+            ModId = mod.Id,
+            ModName = mod.Name,
+            TargetDir = root,
+            InstallId = mod.InstallId,
+            StartedAt = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+        };
+        _journal.Write(journal);
+
+        InstalledFile entry;
+        try
+        {
+            entry = WriteConfig(
+                mod,
+                manifest,
+                root,
+                backupRoot,
+                backupExisting: existing is null,
+                journal: journal,
+                existing: existing)
+                ?? throw new InvalidOperationException("The config file could not be written.");
+
+            journal.Phase = DeploymentJournal.CommitPhase;
+            _journal.Write(journal);
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error($"Config write failed for '{mod.Name}'.", exception);
+            if (journal.Phase == DeploymentJournal.PreparePhase)
+            {
+                var failures = Rollback(journal.Steps, root);
+                if (failures.Count > 0)
+                {
+                    RecoveryWarning =
+                        $"A config write failed and {failures.Count} file(s) could not be restored: {string.Join(" ", failures)}";
+                    throw new InvalidOperationException(RecoveryWarning, exception);
+                }
+
+                _journal.Delete();
+            }
+
+            throw;
         }
 
         mod.InstalledFiles.RemoveAll(file => file.Destination == entry.Destination);
         mod.InstalledFiles.Add(entry);
-        Store.Save();
+        try
+        {
+            Store.Save();
+        }
+        catch (Exception exception)
+        {
+            RecoveryWarning =
+                "The config file was written, but the library record could not be saved. Restart VI Mod Manager to finish recovery.";
+            AppLog.Error($"Config commit failed for '{mod.Name}'.", exception);
+            throw new InvalidOperationException(RecoveryWarning, exception);
+        }
+
+        _journal.Delete();
+        AppLog.Info($"Config written for '{mod.Name}' at {entry.Destination}.");
         AddHistory("Values written", mod.Name, entry.Destination);
         return entry.Destination;
     }
 
     public LoadOutcome LoadMod(ModRecord mod, string targetDir)
     {
+        using var operation = EnterOperation();
+        EnsureRecovered();
+
         if (!mod.HasManifest && !mod.AutoDeploy)
         {
             throw new InvalidOperationException("This package has no manifest and auto-deploy is off.");
@@ -592,6 +1051,9 @@ public sealed class ModManager
 
     public LoadSummary LoadAll(string targetDir)
     {
+        using var operation = EnterOperation();
+        EnsureRecovered();
+
         if (!Directory.Exists(targetDir))
         {
             throw new InvalidOperationException("Select a valid target folder first.");
@@ -600,6 +1062,12 @@ public sealed class ModManager
         var summary = new LoadSummary();
         foreach (var mod in LoadOrder())
         {
+            if (RecoveryWarning is not null)
+            {
+                summary.Failed.Add((mod.Name, RecoveryWarning));
+                break;
+            }
+
             if (!mod.HasManifest && !mod.AutoDeploy)
             {
                 summary.Skipped.Add((mod.Name, "No manifest and auto-deploy is off"));
@@ -623,51 +1091,208 @@ public sealed class ModManager
 
     public int Uninstall(ModRecord mod, string targetDir)
     {
+        using var operation = EnterOperation();
+        EnsureRecovered();
+
         string root = Path.GetFullPath(targetDir);
         if (!mod.Installed)
         {
             throw new InvalidOperationException("This package is not deployed.");
         }
 
-        int restored = 0;
-        foreach (var file in mod.InstalledFiles)
+        // Preflight every file before touching anything. A later failure must not leave the
+        // target half-restored, and a missing/damaged backup must never be skipped silently.
+        var problems = PreflightUninstall(mod.InstalledFiles, root);
+        if (problems.Count > 0)
         {
-            string destination = Paths.ResolveWithin(root, file.Destination);
-            if (File.Exists(destination) && Hashing.Sha256File(destination) != file.InstalledHash)
-            {
-                throw new InvalidOperationException(
-                    $"File changed since deployment; refusing to overwrite during unload: {file.Destination}");
-            }
+            throw new InvalidOperationException(
+                "Refusing to unload because the target or backups are not in a known state: "
+                + string.Join(" ", problems));
+        }
 
-            if (!string.IsNullOrWhiteSpace(file.Backup))
-            {
-                string backupPath = Paths.ResolveWithin(BackupsDir, file.Backup!);
-                if (File.Exists(backupPath))
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                    File.Copy(backupPath, destination, true);
-                    restored++;
-                }
-            }
-            else if (File.Exists(destination))
-            {
-                File.Delete(destination);
-            }
+        var journal = new DeploymentJournal
+        {
+            Operation = DeploymentJournal.UninstallOperation,
+            Phase = DeploymentJournal.PreparePhase,
+            ModId = mod.Id,
+            ModName = mod.Name,
+            TargetDir = root,
+            InstallId = mod.InstallId ?? "",
+            StartedAt = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+            Steps = mod.InstalledFiles.Select(CloneStep).ToList(),
+        };
+        _journal.Write(journal);
+        AppLog.Info($"Unload started for '{mod.Name}' ({mod.Id}) from {root}.");
+
+        var (restored, failures) = RestoreUninstallSteps(journal.Steps, root);
+        if (failures.Count > 0)
+        {
+            RecoveryWarning =
+                $"Unload was interrupted and {failures.Count} file(s) could not be restored: {string.Join(" ", failures)}";
+            AppLog.Error(RecoveryWarning);
+            throw new InvalidOperationException(RecoveryWarning);
+        }
+
+        try
+        {
+            journal.Phase = DeploymentJournal.CommitPhase;
+            _journal.Write(journal);
+        }
+        catch (Exception exception)
+        {
+            RecoveryWarning =
+                "Files were restored, but the operation record could not be updated. Restart VI Mod Manager to finish recovery.";
+            AppLog.Error($"Unload commit failed for '{mod.Name}'.", exception);
+            throw new InvalidOperationException(RecoveryWarning, exception);
         }
 
         mod.Installed = false;
         mod.InstalledFiles = new List<InstalledFile>();
         mod.InstallId = null;
         mod.LoadedAt = null;
-        Store.Save();
+        try
+        {
+            Store.Save();
+        }
+        catch (Exception exception)
+        {
+            RecoveryWarning =
+                "Files were restored, but the library record could not be saved. Restart VI Mod Manager to finish recovery.";
+            AppLog.Error($"Unload record save failed for '{mod.Name}'.", exception);
+            throw new InvalidOperationException(RecoveryWarning, exception);
+        }
+
+        _journal.Delete();
+        AppLog.Info($"Unload complete for '{mod.Name}': {restored} original file(s) restored.");
         AddHistory("Unloaded", mod.Name, $"{restored} original file(s) restored");
         return restored;
     }
 
-    /// <summary>Restores a failed install so a package cannot leave half-deployed files behind.</summary>
-    private void Rollback(IEnumerable<InstalledFile> installed, string targetDir)
+    private static InstalledFile CloneStep(InstalledFile file) => new()
     {
-        foreach (var file in installed)
+        Destination = file.Destination,
+        Backup = file.Backup,
+        BackupHash = file.BackupHash,
+        InstalledHash = file.InstalledHash,
+        Kind = file.Kind,
+    };
+
+    /// <summary>
+    /// Verifies every deployed file and backup before an unload starts. Files that were already
+    /// restored by a previous interrupted attempt are treated as valid, so a retry is safe.
+    /// </summary>
+    private List<string> PreflightUninstall(IEnumerable<InstalledFile> files, string root)
+    {
+        var problems = new List<string>();
+        foreach (var file in files)
+        {
+            try
+            {
+                string destination = Paths.ResolveWithin(root, file.Destination);
+                string? backupPath = null;
+                if (!string.IsNullOrWhiteSpace(file.Backup))
+                {
+                    backupPath = Paths.ResolveWithin(BackupsDir, file.Backup!);
+                    if (!File.Exists(backupPath))
+                    {
+                        problems.Add($"{file.Destination}: original backup is missing.");
+                        continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(file.BackupHash)
+                        && !string.Equals(
+                            Hashing.Sha256File(backupPath),
+                            file.BackupHash,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        problems.Add($"{file.Destination}: original backup is damaged.");
+                        continue;
+                    }
+                }
+
+                if (!File.Exists(destination))
+                {
+                    continue;
+                }
+
+                string actual = Hashing.Sha256File(destination);
+                bool alreadyRestored = !string.IsNullOrWhiteSpace(file.BackupHash)
+                    && string.Equals(actual, file.BackupHash, StringComparison.OrdinalIgnoreCase);
+                if (!alreadyRestored
+                    && !string.IsNullOrWhiteSpace(file.InstalledHash)
+                    && !string.Equals(actual, file.InstalledHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    problems.Add($"{file.Destination}: file changed since deployment.");
+                }
+            }
+            catch (Exception exception)
+            {
+                problems.Add($"{file.Destination}: {exception.Message}");
+            }
+        }
+
+        return problems;
+    }
+
+    /// <summary>Restores originals or deletes files that did not exist before deployment.</summary>
+    private (int Restored, List<string> Failures) RestoreUninstallSteps(
+        IEnumerable<InstalledFile> files,
+        string root)
+    {
+        int restored = 0;
+        var failures = new List<string>();
+        foreach (var file in files.Reverse())
+        {
+            try
+            {
+                string destination = Paths.ResolveWithin(root, file.Destination);
+                if (!string.IsNullOrWhiteSpace(file.Backup))
+                {
+                    string backupPath = Paths.ResolveWithin(BackupsDir, file.Backup!);
+                    if (!File.Exists(backupPath))
+                    {
+                        failures.Add($"{file.Destination}: backup is missing.");
+                        continue;
+                    }
+
+                    if (File.Exists(destination)
+                        && !string.IsNullOrWhiteSpace(file.BackupHash)
+                        && string.Equals(
+                            Hashing.Sha256File(destination),
+                            file.BackupHash,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        // A previous attempt already restored this file.
+                        continue;
+                    }
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.Copy(backupPath, destination, true);
+                    restored++;
+                }
+                else if (File.Exists(destination))
+                {
+                    File.Delete(destination);
+                }
+            }
+            catch (Exception exception)
+            {
+                failures.Add($"{file.Destination}: {exception.Message}");
+            }
+        }
+
+        return (restored, failures);
+    }
+
+    /// <summary>
+    /// Restores a failed install so a package cannot leave half-deployed files behind. Failures
+    /// are returned instead of swallowed, because an incomplete rollback changes what the user
+    /// must be told (and may require manual repair).
+    /// </summary>
+    private List<string> Rollback(IEnumerable<InstalledFile> installed, string targetDir)
+    {
+        var failures = new List<string>();
+        foreach (var file in installed.Reverse())
         {
             try
             {
@@ -675,25 +1300,49 @@ public sealed class ModManager
                 if (!string.IsNullOrWhiteSpace(file.Backup))
                 {
                     string backup = Paths.ResolveWithin(BackupsDir, file.Backup!);
-                    if (File.Exists(backup))
+                    if (!File.Exists(backup))
                     {
-                        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                        File.Copy(backup, destination, true);
+                        failures.Add($"{file.Destination}: backup is missing.");
+                        continue;
                     }
+
+                    if (!string.IsNullOrWhiteSpace(file.BackupHash)
+                        && !string.Equals(
+                            Hashing.Sha256File(backup),
+                            file.BackupHash,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        failures.Add($"{file.Destination}: backup is damaged.");
+                        continue;
+                    }
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.Copy(backup, destination, true);
                 }
                 else if (File.Exists(destination))
                 {
                     File.Delete(destination);
                 }
             }
-            catch (Exception exception) when (exception is IOException or PackageException or UnauthorizedAccessException)
+            catch (Exception exception)
             {
-                // Keep rolling back the remaining files; the original error is still reported.
+                // Rollback is best-effort: record the failure and keep restoring the rest.
+                failures.Add($"{file.Destination}: {exception.Message}");
             }
         }
+
+        return failures;
     }
 
-    private InstalledFile? WriteConfig(ModRecord mod, JsonObject manifest, string targetDir, string backupRoot, bool backupExisting)
+    private InstalledFile? WriteConfig(
+        ModRecord mod,
+        JsonObject manifest,
+        string targetDir,
+        string backupRoot,
+        bool backupExisting,
+        List<InstalledFile>? transaction = null,
+        DeploymentJournal? journal = null,
+        InstalledFile? existing = null)
     {
         string? relative = ModConfig.ConfigDestination(manifest);
         if (relative is null)
@@ -701,28 +1350,81 @@ public sealed class ModManager
             return null;
         }
 
-        string destination = Paths.ResolveWithin(targetDir, Paths.SafeRelative(relative));
+        string safeRelative = Paths.SafeRelative(relative);
+        string destination = Paths.ResolveWithin(targetDir, safeRelative);
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
 
         string? backup = null;
+        string? backupHash = null;
         if (backupExisting && File.Exists(destination))
         {
-            string backupPath = Path.Combine(backupRoot, relative.Replace('/', Path.DirectorySeparatorChar));
+            string backupPath = Paths.ResolveWithin(backupRoot, safeRelative);
             Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
+            string originalHash = Hashing.Sha256File(destination);
             File.Copy(destination, backupPath, true);
             backup = Path.GetRelativePath(BackupsDir, backupPath).Replace('\\', '/');
+            backupHash = Hashing.Sha256File(backupPath);
+            if (!string.Equals(originalHash, backupHash, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new IOException($"Backup verification failed for {safeRelative}.");
+            }
+        }
+        else if (existing?.Backup is not null)
+        {
+            // Re-syncing values must keep the original pre-deployment backup.
+            backup = existing.Backup;
+            backupHash = existing.BackupHash;
         }
 
         var schema = ModConfig.ParseSchema(manifest["settings"] ?? manifest["variables"]);
         var values = ModConfig.BuildValues(schema, mod.Config);
-        File.WriteAllText(destination, values.ToJsonString(ConfigJson) + Environment.NewLine);
-        return new InstalledFile
+        var entry = new InstalledFile
         {
-            Destination = Paths.SafeRelative(relative),
+            Destination = safeRelative,
             Backup = backup,
-            InstalledHash = Hashing.Sha256File(destination),
+            BackupHash = backupHash,
             Kind = "config",
         };
+
+        // Register before the write for the same reason as payload files: a failure after the
+        // atomic move must still leave rollback with a record it can restore.
+        transaction?.Add(entry);
+        if (journal is not null)
+        {
+            journal.Steps.Add(entry);
+            _journal.Write(journal);
+        }
+
+        string temp = destination + ".vmm-tmp";
+        try
+        {
+            destination = Paths.ResolveWithin(targetDir, safeRelative);
+            File.WriteAllText(temp, values.ToJsonString(ConfigJson) + Environment.NewLine);
+            destination = Paths.ResolveWithin(targetDir, safeRelative);
+            File.Move(temp, destination, true);
+            entry.InstalledHash = Hashing.Sha256File(destination);
+        }
+        finally
+        {
+            TryDelete(temp);
+        }
+
+        return entry;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A leftover temp file is harmless compared with masking the original failure.
+        }
     }
 
     // ------------------------------------------------------------------ profiles
@@ -734,6 +1436,7 @@ public sealed class ModManager
 
     public ModProfile SaveProfile(string name)
     {
+        using var operation = EnterOperation();
         if (Profiles is null)
         {
             throw new InvalidOperationException("Profiles are not available in this data root.");
@@ -752,7 +1455,7 @@ public sealed class ModManager
             CreatedAt = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
         };
 
-        foreach (var mod in Store.Current.Mods)
+        foreach (var mod in SnapshotMods())
         {
             profile.Enabled[mod.Id] = mod.Enabled;
             profile.Config[mod.Id] = new Dictionary<string, string>(mod.Config, StringComparer.Ordinal);
@@ -772,8 +1475,11 @@ public sealed class ModManager
 
     public int ApplyProfile(ModProfile profile, string? targetDir = null)
     {
+        using var operation = EnterOperation();
+        EnsureRecovered();
+
         int applied = 0;
-        foreach (var mod in Store.Current.Mods)
+        foreach (var mod in SnapshotMods())
         {
             if (profile.Enabled.TryGetValue(mod.Id, out bool enabled))
             {
@@ -791,7 +1497,7 @@ public sealed class ModManager
 
         if (!string.IsNullOrWhiteSpace(targetDir) && Directory.Exists(targetDir))
         {
-            foreach (var mod in Store.Current.Mods.Where(mod => mod.Installed))
+            foreach (var mod in SnapshotMods().Where(mod => mod.Installed))
             {
                 JsonObject? manifest = ManifestFor(mod);
                 if (manifest is not null && ModConfig.ConfigDestination(manifest) is not null)
@@ -815,6 +1521,7 @@ public sealed class ModManager
 
     public void RenameProfile(ModProfile profile, string name)
     {
+        using var operation = EnterOperation();
         if (Profiles is null)
         {
             throw new InvalidOperationException("Profiles are not available in this data root.");
@@ -833,6 +1540,7 @@ public sealed class ModManager
 
     public void DeleteProfile(ModProfile profile)
     {
+        using var operation = EnterOperation();
         if (Profiles is null)
         {
             throw new InvalidOperationException("Profiles are not available in this data root.");

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text;
 using System.Text.Json.Nodes;
 
 namespace ViModManager.Core;
@@ -54,7 +55,7 @@ public static class Packages
         var contents = new PackageContents();
         try
         {
-            using var archive = ZipFile.OpenRead(path);
+            using var archive = OpenArchive(path);
             foreach (var entry in archive.Entries)
             {
                 contents.Entries.Add(entry.FullName.Replace('\\', '/'));
@@ -71,8 +72,7 @@ public static class Packages
 
             string manifestName = manifestEntry.FullName;
             using var stream = manifestEntry.Open();
-            using var reader = new StreamReader(stream);
-            string text = reader.ReadToEnd();
+            string text = ReadText(stream);
             try
             {
                 contents.Manifest = JsonNode.Parse(text) as JsonObject
@@ -90,6 +90,63 @@ public static class Packages
         }
 
         return contents;
+    }
+
+    /// <summary>Opens a ZIP and rejects structurally ambiguous archives before use.</summary>
+    public static ZipArchive OpenArchive(string path)
+    {
+        ZipArchive archive;
+        try
+        {
+            archive = ZipFile.OpenRead(path);
+        }
+        catch (InvalidDataException)
+        {
+            throw new PackageException("The package is not a readable ZIP archive.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new PackageException("The package file could not be read.");
+        }
+
+        try
+        {
+            ValidateArchive(archive);
+            return archive;
+        }
+        catch
+        {
+            archive.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Streams one ZIP entry to disk and returns the number of bytes written. No artificial size cap
+    /// is applied: packages may contain arbitrarily large game assets.
+    /// </summary>
+    public static long ExtractEntryToFile(ZipArchiveEntry entry, string destination)
+    {
+        try
+        {
+            using var input = entry.Open();
+            using var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None);
+            var buffer = new byte[81920];
+            long total = 0;
+            int read;
+            while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                output.Write(buffer, 0, read);
+                total += read;
+            }
+
+            output.Flush(true);
+            return total;
+        }
+        catch (InvalidDataException)
+        {
+            throw new PackageException($"The package entry is corrupt or unreadable: {entry.FullName}");
+        }
     }
 
     public static JsonObject? ReadManifest(string path)
@@ -110,8 +167,8 @@ public static class Packages
         try
         {
             using var stream = File.OpenRead(path);
-            using var reader = new StreamReader(stream);
-            return JsonNode.Parse(reader.ReadToEnd()) as JsonObject
+            string text = ReadText(stream);
+            return JsonNode.Parse(text) as JsonObject
                 ?? throw new PackageException($"{ManifestFileName} must contain a JSON object.");
         }
         catch (System.Text.Json.JsonException exception)
@@ -145,6 +202,7 @@ public static class Packages
         var files = new List<PackageFile>();
         if (manifest["files"] is not JsonArray array)
         {
+            ValidateDestinations(files, ModConfig.ConfigDestination(manifest));
             return files;
         }
 
@@ -165,7 +223,34 @@ public static class Packages
             files.Add(new PackageFile(Paths.SafeRelative(source), Paths.SafeRelative(destination)));
         }
 
+        ValidateDestinations(files, ModConfig.ConfigDestination(manifest));
         return files;
+    }
+
+    /// <summary>
+    /// Rejects destination collisions before deployment. Windows treats paths
+    /// case-insensitively, so the comparison is case-insensitive as well.
+    /// </summary>
+    public static void ValidateDestinations(IEnumerable<PackageFile> files, string? configDestination = null)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in files)
+        {
+            if (!seen.Add(file.Destination))
+            {
+                throw new PackageException($"Duplicate destination in package: {file.Destination}");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(configDestination))
+        {
+            string config = Paths.SafeRelative(configDestination);
+            if (!seen.Add(config))
+            {
+                throw new PackageException(
+                    $"The package config file collides with a deployed file: {config}");
+            }
+        }
     }
 
     private static string ReadText(JsonNode? node) => node switch
@@ -182,7 +267,7 @@ public static class Packages
     public static List<PackageFile> AutoFiles(string path)
     {
         var result = new List<PackageFile>();
-        using var archive = ZipFile.OpenRead(path);
+        using var archive = OpenArchive(path);
         foreach (var entry in archive.Entries)
         {
             string name = entry.FullName.Replace('\\', '/').Trim();
@@ -202,6 +287,8 @@ public static class Packages
             }
         }
 
+        // Two entries such as A.txt and a.txt would silently overwrite each other on Windows.
+        ValidateDestinations(result);
         return result;
     }
 
@@ -223,11 +310,6 @@ public static class Packages
         foreach (string file in Directory.EnumerateFiles(directory, "*", options))
         {
             string relative = Path.GetRelativePath(directory, file).Replace('\\', '/');
-            if (relative.Contains("..", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
             try
             {
                 result.Add(Paths.SafeRelative(relative));
@@ -261,7 +343,18 @@ public static class Packages
         {
             foreach (string relative in SafeFolderFiles(directory))
             {
-                string source = Path.Combine(directory, relative.Replace('/', Path.DirectorySeparatorChar));
+                // Resolve again right before packing: a file or parent folder can be swapped
+                // for a link after enumeration, and its target must never be packed.
+                string source;
+                try
+                {
+                    source = Paths.ResolveWithin(directory, relative);
+                }
+                catch (PackageException)
+                {
+                    continue;
+                }
+
                 archive.CreateEntryFromFile(source, relative, CompressionLevel.Optimal);
             }
         }
@@ -310,10 +403,56 @@ public static class Packages
         string fileName = Path.GetFileName(name);
         return fileName.Length > 0 && fileName[0] == '.';
     }
+
+    /// <summary>
+    /// Rejects archives whose central directory cannot be mapped unambiguously. Deliberately does
+    /// not impose size, entry-count, or compression-ratio caps: legitimate packages can contain
+    /// very large assets, and the deploy path records every byte it writes.
+    /// </summary>
+    private static void ValidateArchive(ZipArchive archive)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (var entry in archive.Entries)
+            {
+                // Directory entries have an empty Name and do not write payload bytes.
+                if (entry.Name.Length == 0)
+                {
+                    continue;
+                }
+
+                string normalized = entry.FullName.Replace('\\', '/').TrimEnd('/');
+                if (!names.Add(normalized))
+                {
+                    throw new PackageException($"The package contains a duplicate entry: {normalized}");
+                }
+            }
+        }
+        catch (InvalidDataException)
+        {
+            throw new PackageException("The package is not a readable ZIP archive.");
+        }
+    }
+
+    private static string ReadText(Stream stream)
+    {
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
+    }
 }
 
 public static class Paths
 {
+    private static readonly char[] InvalidNameChars = { '<', '>', ':', '"', '|', '?', '*', '\0' };
+
+    private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    };
+
     public static string SafeRelative(string? value)
     {
         string normalized = (value ?? "").Replace('\\', '/').Trim();
@@ -328,9 +467,33 @@ public static class Paths
         }
 
         string[] parts = normalized.Split('/');
-        if (parts.Any(part => part.Length == 0 || part == "." || part == ".."))
+        foreach (string part in parts)
         {
-            throw new PackageException($"Unsafe relative path: {value}");
+            if (part.Length == 0 || part == "." || part == "..")
+            {
+                throw new PackageException($"Unsafe relative path: {value}");
+            }
+
+            if (part.Length > 255)
+            {
+                throw new PackageException($"A path segment is too long: {part}");
+            }
+
+            if (part.Any(char.IsControl) || part.IndexOfAny(InvalidNameChars) >= 0)
+            {
+                throw new PackageException($"Unsafe characters in path: {value}");
+            }
+
+            if (part.EndsWith('.') || part.EndsWith(' '))
+            {
+                throw new PackageException($"A path segment cannot end with a dot or space: {value}");
+            }
+
+            string stem = part.Split('.')[0];
+            if (ReservedNames.Contains(stem))
+            {
+                throw new PackageException($"Windows-reserved file name in path: {value}");
+            }
         }
 
         return string.Join('/', parts);
@@ -343,13 +506,62 @@ public static class Paths
         StringComparison comparison = OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
-        if (!combined.Equals(rootFull, comparison)
-            && !combined.StartsWith(rootFull + Path.DirectorySeparatorChar, comparison))
+
+        string boundary = Path.TrimEndingDirectorySeparator(rootFull);
+        string prefix = boundary.EndsWith(Path.DirectorySeparatorChar)
+            ? boundary
+            : boundary + Path.DirectorySeparatorChar;
+        if (!combined.Equals(boundary, comparison) && !combined.StartsWith(prefix, comparison))
         {
             throw new PackageException("A path in this package escapes the selected folder.");
         }
 
+        EnsureNoReparsePoints(boundary, combined);
         return combined;
+    }
+
+    /// <summary>
+    /// Rejects existing symlinks and junctions anywhere below the root. Lexical containment is
+    /// not enough: a junction inside the target can redirect a write somewhere else entirely.
+    /// </summary>
+    private static void EnsureNoReparsePoints(string rootFull, string combined)
+    {
+        string relative = Path.GetRelativePath(rootFull, combined);
+        if (relative == ".")
+        {
+            return;
+        }
+
+        string current = rootFull;
+        foreach (string segment in relative.Split(
+            Path.DirectorySeparatorChar,
+            StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, segment);
+            if (IsReparsePoint(current))
+            {
+                throw new PackageException(
+                    $"A path component is a symbolic link or junction and cannot be used: {segment}");
+            }
+        }
+    }
+
+    /// <summary>True when the path itself is a symlink, junction, or other reparse point.</summary>
+    public static bool IsReparsePoint(string path)
+    {
+        try
+        {
+            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return false;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The write itself will report an inaccessible path; do not mask it here.
+            return false;
+        }
     }
 }
 

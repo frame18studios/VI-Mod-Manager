@@ -276,7 +276,7 @@ public partial class MainWindow
             "Copy files and write values into the target folder.")));
         actions.Children.Add(Spaced(Ui.Btn(mod.Enabled ? "Disable" : "Enable", () => ToggleSelected(mod), "ghost chip")));
         actions.Children.Add(Spaced(Ui.BusyBtn("Rename", () => RenameAsync(mod), "ghost chip")));
-        actions.Children.Add(Spaced(Ui.Btn("Verify hash", () => VerifySelected(mod), "ghost chip")));
+        actions.Children.Add(Spaced(Ui.BusyBtn("Verify hash", () => VerifySelectedAsync(mod), "ghost chip")));
         if (mod.Installed)
         {
             actions.Children.Add(Spaced(Ui.BusyBtn("Unload", () => UnloadAsync(mod), "soft chip")));
@@ -363,7 +363,17 @@ public partial class MainWindow
     private Border BuildFilesCard(ModRecord mod)
     {
         var (card, body) = SectionCard("Deployable files", "All destinations resolve safely inside the target folder.");
-        var files = _services.Manager.FilesFor(mod);
+        List<PackageFile> files;
+        try
+        {
+            files = _services.Manager.FilesFor(mod);
+        }
+        catch (PackageException exception)
+        {
+            body.Children.Add(Ui.Muted(exception.Message));
+            return card;
+        }
+
         if (files.Count == 0)
         {
             body.Children.Add(Ui.Muted("No deployable files in this package."));

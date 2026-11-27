@@ -63,18 +63,28 @@ public partial class MainWindow
         int imported = 0;
         ModRecord? last = null;
         var errors = new List<string>();
-        foreach (string path in paths)
+        BeginBusy(paths.Count == 1 ? "Importing package…" : $"Importing {paths.Count} items…");
+        try
         {
-            try
+            for (int index = 0; index < paths.Count; index++)
             {
-                var (record, _) = await _services.Manager.ImportPackageAsync(path);
-                last = record;
-                imported++;
+                string path = paths[index];
+                _busyText.Text = $"Importing {index + 1}/{paths.Count}: {Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar))}";
+                try
+                {
+                    var (record, _) = await _services.Manager.ImportPackageAsync(path);
+                    last = record;
+                    imported++;
+                }
+                catch (Exception exception)
+                {
+                    errors.Add($"{Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar))}: {exception.Message}");
+                }
             }
-            catch (Exception exception)
-            {
-                errors.Add($"{Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar))}: {exception.Message}");
-            }
+        }
+        finally
+        {
+            EndBusy();
         }
 
         RefreshAll();
@@ -142,6 +152,7 @@ public partial class MainWindow
             return;
         }
 
+        BeginBusy($"Deploying {mod.Name}…");
         try
         {
             LoadOutcome outcome = await _services.Manager.LoadModAsync(mod, targetDir);
@@ -156,6 +167,10 @@ public partial class MainWindow
         {
             await Dialogs.Info(this, "Could not load mod", exception.Message);
         }
+        finally
+        {
+            EndBusy();
+        }
     }
 
     private async Task LoadAllAsync()
@@ -166,6 +181,7 @@ public partial class MainWindow
             return;
         }
 
+        BeginBusy("Deploying enabled packages…");
         try
         {
             LoadSummary summary = await _services.Manager.LoadAllAsync(targetDir);
@@ -187,6 +203,10 @@ public partial class MainWindow
         catch (Exception exception)
         {
             await Dialogs.Info(this, "Could not load mods", exception.Message);
+        }
+        finally
+        {
+            EndBusy();
         }
     }
 
@@ -215,16 +235,25 @@ public partial class MainWindow
 
         int restored = 0;
         var errors = new List<string>();
-        foreach (var mod in loaded.AsEnumerable().Reverse())
+        BeginBusy($"Unloading {loaded.Count} package(s)…");
+        try
         {
-            try
+            foreach (var mod in loaded.AsEnumerable().Reverse())
             {
-                restored += await _services.Manager.UninstallAsync(mod, targetDir);
+                _busyText.Text = $"Unloading {mod.Name}…";
+                try
+                {
+                    restored += await _services.Manager.UninstallAsync(mod, targetDir);
+                }
+                catch (Exception exception)
+                {
+                    errors.Add($"{mod.Name}: {exception.Message}");
+                }
             }
-            catch (Exception exception)
-            {
-                errors.Add($"{mod.Name}: {exception.Message}");
-            }
+        }
+        finally
+        {
+            EndBusy();
         }
 
         RefreshAll();
@@ -243,19 +272,28 @@ public partial class MainWindow
         RefreshAll();
     }
 
-    private void VerifySelected(ModRecord mod)
+    private async Task VerifySelectedAsync(ModRecord mod)
     {
         string package = Path.Combine(_services.ModsDir, mod.Package);
         if (!File.Exists(package))
         {
-            _ = Dialogs.Info(this, "Verification failed", "The package file is missing.");
+            await Dialogs.Info(this, "Verification failed", "The package file is missing.");
             return;
         }
 
-        _ = Dialogs.Info(this, "Package verified",
-            Hashing.Sha256File(package) == mod.Sha256
-                ? "SHA-256 matches the imported package record."
-                : "SHA-256 mismatch. The package may have changed or become corrupted.");
+        BeginBusy($"Verifying {mod.Name}…");
+        try
+        {
+            string actual = await Task.Run(() => Hashing.Sha256File(package));
+            await Dialogs.Info(this, "Package verification",
+                string.Equals(actual, mod.Sha256, StringComparison.OrdinalIgnoreCase)
+                    ? "SHA-256 matches the imported package record."
+                    : "SHA-256 mismatch. The package changed or became corrupted; re-import it before deploying.");
+        }
+        finally
+        {
+            EndBusy();
+        }
     }
 
     private async Task RenameAsync(ModRecord mod)
@@ -285,6 +323,7 @@ public partial class MainWindow
             return;
         }
 
+        BeginBusy($"Unloading {mod.Name}…");
         try
         {
             int restored = await _services.Manager.UninstallAsync(mod, targetDir);
@@ -294,6 +333,10 @@ public partial class MainWindow
         catch (Exception exception)
         {
             await Dialogs.Info(this, "Unload failed", exception.Message);
+        }
+        finally
+        {
+            EndBusy();
         }
     }
 
@@ -462,6 +505,7 @@ public partial class MainWindow
         try
         {
             string? targetDir = await TargetDirOrWarnAsync(warn: false);
+            BeginBusy($"Applying profile “{profile.Name}”…");
             int applied = _services.Manager.ApplyProfile(profile, targetDir);
             RefreshAll();
             await Dialogs.Info(this, "Profile applied",
@@ -471,6 +515,10 @@ public partial class MainWindow
         catch (Exception exception)
         {
             await Dialogs.Info(this, "Could not apply profile", exception.Message);
+        }
+        finally
+        {
+            EndBusy();
         }
     }
 
