@@ -30,6 +30,19 @@ public sealed class DeploymentJournal
     public List<InstalledFile> Steps { get; set; } = new();
 }
 
+public enum JournalReadStatus
+{
+    Missing,
+    Valid,
+    Corrupt,
+}
+
+/// <summary>Explicit read outcome so an unreadable journal is never mistaken for no journal.</summary>
+public sealed record JournalReadResult(
+    JournalReadStatus Status,
+    DeploymentJournal? Journal,
+    string? Error);
+
 /// <summary>Atomic JSON persistence for the single pending <see cref="DeploymentJournal"/>.</summary>
 public sealed class DeploymentJournalStore
 {
@@ -51,25 +64,29 @@ public sealed class DeploymentJournalStore
         FilePath = Path.Combine(dataDirectory, "deployment-journal.json");
     }
 
-    public DeploymentJournal? Read()
+    public DeploymentJournal? Read() => ReadDetailed().Journal;
+
+    public JournalReadResult ReadDetailed()
     {
         if (!File.Exists(FilePath))
         {
-            return null;
+            return new JournalReadResult(JournalReadStatus.Missing, null, null);
         }
 
         try
         {
             using var stream = File.OpenRead(FilePath);
-            return JsonSerializer.Deserialize<DeploymentJournal>(stream, Options);
+            var journal = JsonSerializer.Deserialize<DeploymentJournal>(stream, Options);
+            return journal is null
+                ? new JournalReadResult(JournalReadStatus.Corrupt, null, "The journal contains no record.")
+                : new JournalReadResult(JournalReadStatus.Valid, journal, null);
         }
         catch (JsonException exception)
         {
-            // Only a genuinely unreadable document is quarantined. A transient share/lock error
-            // must leave the journal in place so startup recovery can still resolve the operation.
-            AppLog.Error("The deployment journal is corrupt and was quarantined.", exception);
-            Quarantine();
-            return null;
+            // A corrupt record is preserved: moving it away would turn an unfinished transaction
+            // into an empty one and could leave restored files without a matching ModRecord.
+            AppLog.Error($"The deployment journal at {FilePath} is unreadable and was preserved.", exception);
+            return new JournalReadResult(JournalReadStatus.Corrupt, null, exception.Message);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -80,14 +97,38 @@ public sealed class DeploymentJournalStore
 
     public void Write(DeploymentJournal journal)
     {
-        string temp = FilePath + ".tmp";
-        using (var stream = File.Create(temp))
+        string temp = Path.Combine(
+            Path.GetDirectoryName(FilePath)!,
+            $".deployment-journal-{Guid.NewGuid():N}.tmp");
+        try
         {
-            JsonSerializer.Serialize(stream, journal, Options);
-            stream.Flush(true);
-        }
+            using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                JsonSerializer.Serialize(stream, journal, Options);
+                stream.Flush(true);
+            }
 
-        File.Move(temp, FilePath, true);
+            File.Move(temp, FilePath, true);
+        }
+        finally
+        {
+            TryDelete(temp);
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A leftover unnamed temp file is harmless compared with masking the real failure.
+        }
     }
 
     public void Delete()
@@ -102,28 +143,6 @@ public sealed class DeploymentJournalStore
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             AppLog.Warn("The deployment journal could not be removed: " + exception.Message);
-        }
-    }
-
-    private void Quarantine()
-    {
-        try
-        {
-            string stamp = DateTimeOffset.Now.ToString(
-                "yyyyMMdd-HHmmss",
-                System.Globalization.CultureInfo.InvariantCulture);
-            string target = $"{FilePath}.corrupt-{stamp}";
-            int suffix = 1;
-            while (File.Exists(target))
-            {
-                target = $"{FilePath}.corrupt-{stamp}-{suffix++}";
-            }
-
-            File.Move(FilePath, target);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // The app can continue; the next operation writes a fresh journal.
         }
     }
 }

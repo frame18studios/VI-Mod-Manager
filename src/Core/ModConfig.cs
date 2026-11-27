@@ -72,6 +72,17 @@ public static class ModConfig
                 Max = ReadDouble(node["max"]),
                 Step = ReadDouble(node["step"]),
             };
+            if (field.Min is double min && field.Max is double max && min > max)
+            {
+                field.Min = null;
+                field.Max = null;
+            }
+
+            if (field.Step is double step && (!double.IsFinite(step) || step <= 0))
+            {
+                field.Step = null;
+            }
+
             field.DefaultValue = DefaultFor(field);
             if (node["default"] is JsonNode defaultNode)
             {
@@ -101,18 +112,21 @@ public static class ModConfig
             case "bool":
                 return IsTruthy(text) ? "true" : "false";
             case "int":
-                if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
+                if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number)
+                    && double.IsFinite(number))
                 {
+                    number = Math.Clamp(Math.Round(number), int.MinValue, int.MaxValue);
                     number = Clamp(field, number);
                     return Math.Round(number).ToString(CultureInfo.InvariantCulture);
                 }
 
                 return field.DefaultValue;
             case "float":
-                if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double real))
+                if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double real)
+                    && double.IsFinite(real))
                 {
                     real = Clamp(field, real);
-                    return real.ToString("0.######", CultureInfo.InvariantCulture);
+                    return double.IsFinite(real) ? real.ToString("0.######", CultureInfo.InvariantCulture) : field.DefaultValue;
                 }
 
                 return field.DefaultValue;
@@ -150,7 +164,9 @@ public static class ModConfig
             {
                 "bool" => JsonValue.Create(text == "true"),
                 "int" => JsonValue.Create(int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int integer) ? integer : 0),
-                "float" => JsonValue.Create(double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double real) ? real : 0d),
+                "float" => JsonValue.Create(
+                    double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double real)
+                    && double.IsFinite(real) ? real : 0d),
                 _ => JsonValue.Create(text),
             };
         }
@@ -242,7 +258,9 @@ public static class ModConfig
             return null;
         }
 
-        if (value.GetValueKind() == JsonValueKind.Number && double.TryParse(value.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
+        if (value.GetValueKind() == JsonValueKind.Number
+            && double.TryParse(value.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double number)
+            && double.IsFinite(number))
         {
             return number;
         }

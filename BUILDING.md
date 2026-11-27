@@ -49,7 +49,7 @@ dotnet publish src/ViModManager.csproj -c Release -r win-x64 `
 
 ### Stage the flat release folder
 
-`publish/` contains only the two EXEs and the checksum file. Committed copies are provided for direct download; a tagged release rebuilds from source and uploads the authoritative assets. Verify each download against the checksum file shipped with it.
+CI stages only the two EXEs and the checksum file in a flat `publish/` folder. The committed `publish/` folder holds older reference artifacts (and may hold local data created by running them); it is not a current download source. A tagged release rebuilds from source and uploads the authoritative assets. Verify each download against the checksum file shipped with it.
 
 ```powershell
 New-Item -ItemType Directory -Force publish | Out-Null
@@ -76,7 +76,7 @@ The GitHub Actions workflow in `.github/workflows/windows-exe.yml`:
 5. Uploads the two EXEs and the checksum file as build artifacts.
 6. On a `v*` tag, creates a GitHub release with those files and the contents of `RELEASE_NOTES.md`.
 
-`bin/` and `obj/` are generated build caches and are ignored by Git. The three release files in `publish/` are committed for direct download. When publishing a tagged release, the workflow builds fresh EXEs from source and uploads those assets; it does not push generated binaries back to the branch.
+`bin/` and `obj/` are generated build caches and are ignored by Git. The three older release files in `publish/` are committed for reference only. When publishing a tagged release, the workflow builds fresh EXEs from source and uploads those assets; it does not push generated binaries back to the branch.
 
 Release assets must contain only the two built EXEs and the checksum file. Do not add game files, mods, third-party assets, or user packages to a release.
 
@@ -89,6 +89,8 @@ $env:VIMM_DATA_ROOT = "$env:TEMP\vimm-test"
 .\publish\ViModManager.exe
 ```
 
+A named OS lock keyed to the resolved data root allows only one instance to use that root. Close the first instance (or choose a different data root) before starting a second one.
+
 ## Project layout
 
 ```text
@@ -96,7 +98,7 @@ ViModManager.slnx
 src/
   ViModManager.csproj
   Assets/                 Application icon (vimm-icon.ico) and SVG mark (vimm-logo.svg)
-  Core/                   Deployment engine, manifest parser, path safety, package reader, JSON store
+  Core/                   Deployment engine, manifest parser, path safety, package reader, JSON store, data-root lock
   Models/                 Settings, package records, config schema, profiles, history
   Views/                  Main window shell, vector icons, shared UI factory, dialogs
   Views/Pages/            Dashboard, Library, Load Order, Profiles, Target, History, Settings
@@ -110,12 +112,13 @@ src/
 tests/
   ViModManager.Tests.csproj
   CoreTests.cs            Core engine and path-safety tests
+  HardeningTests.cs       Adversarial recovery, concurrency, and large-payload tests
   ExamplePackageTests.cs  Bundled demo package import/load/unload tests
   ExamplePackageContentTests.cs  Demo package content checks
 examples/                 Harmless text/JSON demo package (example-package-demo.zip)
 docs/                     Manifest and package-format documentation
 .github/workflows/        Windows EXE build and release workflow
-publish/                  Committed release files: ViModManager.exe, ViModManager-light.exe, SHA256SUMS.txt
+publish/                  Older reference artifacts: ViModManager.exe, ViModManager-light.exe, SHA256SUMS.txt
 THIRD-PARTY-NOTICES.md    Dependency versions and upstream license references
 ```
 

@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using ViModManager;
 using ViModManager.Core;
@@ -75,26 +78,40 @@ public sealed class HardeningTests : IDisposable
     }
 
     [Fact]
-    public void CorruptJournalIsQuarantinedAndNormalOperationsContinue()
+    public void CorruptJournalBlocksDestructiveOperationsUntilAcknowledged()
     {
         string data = DataPath();
         ModManager first = NewManager(data);
+        var (mod, _) = first.ImportPackage(Package("before-corrupt-journal", null, ("a.txt", "payload")));
         string journal = Path.Combine(data, "deployment-journal.json");
         File.WriteAllText(journal, "{ this journal is damaged ");
 
         ModManager restarted = NewManager(data);
-        Assert.Null(restarted.RecoveryWarning);
-        Assert.Contains(
-            Directory.GetFiles(data, "deployment-journal.json.corrupt-*"),
-            file => File.ReadAllText(file).Contains("damaged"));
-        Assert.False(File.Exists(journal));
+        Assert.True(restarted.HasCorruptJournal);
+        Assert.Equal(journal, restarted.CorruptJournalPath);
+        Assert.NotNull(restarted.RecoveryWarning);
+        Assert.Contains(journal, restarted.RecoveryWarning, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(journal));
+        Assert.Empty(Directory.GetFiles(data, "deployment-journal.json.corrupt-*"));
 
-        var (mod, _) = restarted.ImportPackage(Package("after-corrupt-journal", null, ("a.txt", "payload")));
         string target = Path.Combine(_root, "after-corrupt-target");
         Directory.CreateDirectory(target);
-        Assert.Equal(1, restarted.Install(mod, target));
+        string partial = Path.Combine(target, "a.txt.vmm-tmp");
+        File.WriteAllText(partial, "partial payload");
+
+        Assert.Throws<InvalidOperationException>(() => restarted.Install(restarted.Get(mod.Id)!, target));
+        Assert.Throws<InvalidOperationException>(() => restarted.ImportPackage(
+            Package("after-corrupt-journal", null, ("a.txt", "payload"))));
+        Assert.False(File.Exists(Path.Combine(target, "a.txt")));
+        Assert.Equal("partial payload", File.ReadAllText(partial));
+        Assert.Empty(Directory.GetFiles(target, ".vmm-*.tmp"));
+
+        restarted.AcknowledgeCorruptJournal();
+        Assert.False(restarted.HasCorruptJournal);
+        Assert.Null(restarted.RecoveryWarning);
+        Assert.False(File.Exists(journal));
+        Assert.Equal(1, restarted.Install(restarted.Get(mod.Id)!, target));
         Assert.Equal("payload", File.ReadAllText(Path.Combine(target, "a.txt")));
-        Assert.NotNull(first);
     }
 
     [Fact]
@@ -372,6 +389,247 @@ public sealed class HardeningTests : IDisposable
         Assert.Equal(1501, info.Entries.Count);
         Assert.Equal(1501, mod.FileCount);
         Assert.True(File.Exists(Path.Combine(manager.ModsDir, mod.Package)));
+    }
+
+    [Fact]
+    public void ExistingTemporaryFileIsNeverTruncated()
+    {
+        string data = DataPath();
+        ModManager manager = NewManager(data);
+        var (mod, _) = manager.ImportPackage(Package("temp-collision", null, ("a.txt", "payload")));
+
+        string target = Path.Combine(_root, "collision-target");
+        Directory.CreateDirectory(target);
+        string collision = Path.Combine(target, "a.txt.vmm-tmp");
+        File.WriteAllText(collision, "unrelated file");
+
+        Assert.Equal(1, manager.Install(mod, target));
+        Assert.Equal("unrelated file", File.ReadAllText(collision));
+        Assert.Equal("payload", File.ReadAllText(Path.Combine(target, "a.txt")));
+        Assert.Empty(Directory.GetFiles(target, ".vmm-*.tmp"));
+    }
+
+    [Fact]
+    public void SymbolicLinkAtStagingPathIsNeverFollowed()
+    {
+        string data = DataPath();
+        ModManager manager = NewManager(data);
+        string package = Package("link-staging", null, ("a.txt", "payload"));
+        var (_, _) = manager.ImportPackage(package);
+
+        string target = Path.Combine(_root, "link-target");
+        Directory.CreateDirectory(target);
+        string outside = Path.Combine(_root, "outside.txt");
+        File.WriteAllText(outside, "untouched");
+        string staging = Path.Combine(target, "a.txt.vmm-tmp");
+
+        try
+        {
+            File.CreateSymbolicLink(staging, outside);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            // Symlink creation needs developer mode or elevation on some Windows machines.
+            return;
+        }
+
+        using var archive = ZipFile.OpenRead(package);
+        ZipArchiveEntry entry = archive.Entries.First(candidate => candidate.Name == "a.txt");
+        Assert.Throws<IOException>(() => Packages.ExtractEntryToFile(entry, staging, createNew: true));
+        Assert.Equal("untouched", File.ReadAllText(outside));
+    }
+
+    [Fact]
+    public void FailedConfigUpdateRestoresPreviousGeneratedConfig()
+    {
+        string data = DataPath();
+        ModManager manager = NewManager(data);
+        var (mod, _) = manager.ImportPackage(Package("config-update", """
+        {"id":"config-update","name":"Config Update","settings":[{"key":"mode","type":"text","default":"first"}],"config":{"file":"cfg.json"},"files":[{"source":"a.txt","destination":"a.txt"}]}
+        """, ("a.txt", "payload")));
+
+        string target = Path.Combine(_root, "config-update-target");
+        Directory.CreateDirectory(target);
+        manager.Install(mod, target);
+
+        manager.SaveConfig(mod, new Dictionary<string, string>(StringComparer.Ordinal) { ["mode"] = "second" });
+        manager.ApplyConfig(mod, target);
+
+        InstalledFile current = Assert.Single(mod.InstalledFiles, file => file.Kind == "config");
+        Assert.False(string.IsNullOrWhiteSpace(current.TransactionBackup));
+        string configPath = Path.Combine(target, "cfg.json");
+        Assert.Contains("second", File.ReadAllText(configPath), StringComparison.OrdinalIgnoreCase);
+
+        // Simulate a crash after the destination was replaced but before the update committed.
+        new DeploymentJournalStore(data).Write(new DeploymentJournal
+        {
+            Operation = DeploymentJournal.ConfigOperation,
+            Phase = DeploymentJournal.PreparePhase,
+            ModId = mod.Id,
+            ModName = mod.Name,
+            TargetDir = target,
+            InstallId = mod.InstallId ?? "",
+            Steps =
+            {
+                new InstalledFile
+                {
+                    Destination = "cfg.json",
+                    TransactionBackup = current.TransactionBackup,
+                    TransactionBackupHash = current.TransactionBackupHash,
+                    InstalledHash = Hashing.Sha256File(configPath),
+                    Kind = "config",
+                },
+            },
+        });
+        File.WriteAllText(configPath, "half-written config");
+
+        ModManager recovered = NewManager(data);
+        Assert.Null(recovered.RecoveryWarning);
+        Assert.Contains("first", File.ReadAllText(configPath), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("half-written", File.ReadAllText(configPath), StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(Path.Combine(data, "deployment-journal.json")));
+    }
+
+    [Fact]
+    public void InterruptedUninstallRefusesExternallyModifiedFiles()
+    {
+        string data = DataPath();
+        ModManager manager = NewManager(data);
+        var (mod, _) = manager.ImportPackage(Package("external-edit", null, ("a.txt", "modded")));
+
+        string target = Path.Combine(_root, "external-edit-target");
+        Directory.CreateDirectory(target);
+        string destination = Path.Combine(target, "a.txt");
+        File.WriteAllText(destination, "original");
+        manager.Install(mod, target);
+
+        InstalledFile step = Assert.Single(mod.InstalledFiles);
+        new DeploymentJournalStore(data).Write(new DeploymentJournal
+        {
+            Operation = DeploymentJournal.UninstallOperation,
+            Phase = DeploymentJournal.PreparePhase,
+            ModId = mod.Id,
+            ModName = mod.Name,
+            TargetDir = target,
+            InstallId = mod.InstallId ?? "",
+            Steps =
+            {
+                new InstalledFile
+                {
+                    Destination = step.Destination,
+                    Backup = step.Backup,
+                    BackupHash = step.BackupHash,
+                    InstalledHash = step.InstalledHash,
+                    Kind = step.Kind,
+                },
+            },
+        });
+
+        File.WriteAllText(destination, "external edit");
+        ModManager blocked = NewManager(data);
+        Assert.NotNull(blocked.RecoveryWarning);
+        Assert.Contains("changed outside", blocked.RecoveryWarning, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("external edit", File.ReadAllText(destination));
+        Assert.Throws<InvalidOperationException>(() => blocked.Install(blocked.Get(mod.Id)!, target));
+
+        File.WriteAllText(destination, "modded");
+        ModManager recovered = NewManager(data);
+        Assert.Null(recovered.RecoveryWarning);
+        Assert.Equal("original", File.ReadAllText(destination));
+        Assert.False(recovered.Get(mod.Id)!.Installed);
+    }
+
+    [Fact]
+    public void OneDataDirectoryAllowsOnlyOneInstance()
+    {
+        string data = DataPath();
+        bool acquired = false;
+        DataRootLock? held = null;
+        using var ready = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+
+        var thread = new Thread(() =>
+        {
+            acquired = DataRootLock.TryAcquire(data, out held, out _);
+            ready.Set();
+            release.Wait();
+            held?.Dispose();
+        });
+        thread.Start();
+
+        Assert.True(ready.Wait(TimeSpan.FromSeconds(10)));
+        try
+        {
+            Assert.True(acquired);
+            Assert.False(DataRootLock.TryAcquire(data, out DataRootLock? second, out string? reason));
+            Assert.Null(second);
+            Assert.Contains("already running", reason, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            release.Set();
+            thread.Join();
+        }
+
+        Assert.True(DataRootLock.TryAcquire(data, out DataRootLock? third, out _));
+        third!.Dispose();
+    }
+
+    [Fact]
+    public void LargeLoosePayloadIsStreamedWithoutSizeCap()
+    {
+        string source = Path.Combine(_root, "large.bin");
+        const long size = 64L * 1024 * 1024;
+        var buffer = new byte[81920];
+        using (var stream = new FileStream(source, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            long written = 0;
+            while (written < size)
+            {
+                int count = (int)Math.Min(buffer.Length, size - written);
+                stream.Write(buffer, 0, count);
+                written += count;
+            }
+        }
+
+        string package = Path.Combine(_root, "large.zip");
+        Packages.WrapFile(source, package);
+
+        ModManager manager = NewManager(DataPath());
+        var (mod, info) = manager.ImportPackage(package);
+        Assert.Single(info.Entries);
+
+        string target = Path.Combine(_root, "large-target");
+        Directory.CreateDirectory(target);
+        Assert.Equal(1, manager.Install(mod, target));
+
+        string deployed = Path.Combine(target, Path.GetFileName(source));
+        Assert.Equal(size, new FileInfo(deployed).Length);
+        Assert.Equal(Hashing.Sha256File(source), Hashing.Sha256File(deployed));
+    }
+
+    [Fact]
+    public void NonFiniteConfigValuesAreRejected()
+    {
+        var schema = new List<ConfigField>
+        {
+            new() { Key = "ratio", Type = "float", Min = 0, Max = 1, DefaultValue = "0.5" },
+            new() { Key = "count", Type = "int", DefaultValue = "0" },
+        };
+
+        Assert.Equal("0.5", ModConfig.Coerce(schema[0], "NaN"));
+        Assert.Equal("0", ModConfig.Coerce(schema[1], "Infinity"));
+
+        JsonObject values = ModConfig.BuildValues(
+            schema,
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["ratio"] = "Infinity",
+                ["count"] = "NaN",
+            });
+        string json = values.ToJsonString();
+        Assert.DoesNotContain("NaN", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Infinity", json, StringComparison.OrdinalIgnoreCase);
     }
 
     private string DataPath()

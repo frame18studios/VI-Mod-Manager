@@ -1,12 +1,12 @@
 # VI Mod Manager — v0.2 (Experimental)
 
-Release date: 2026-11-27
+Status: v0.2 source prepared; no release tag or GitHub Release has been published yet.
 
 ## Overview
 
-**VI Mod Manager v0.2 (experimental)** is a general-purpose, local-first package library and reversible file-deployment workbench for Windows, built with **.NET 10** and **Avalonia 11**. This version removes artificial package-size limits and adds crash recovery, operation serialization, pre-deploy integrity checks, and a clearer safety-focused UI.
+**VI Mod Manager v0.2 (experimental)** is a general-purpose, local-first package library and reversible file-deployment workbench for Windows, built with **.NET 10** and **Avalonia 11**. This version removes artificial payload-size limits and adds crash recovery, fail-closed safety checks, single-instance data-root locking, pre-deploy integrity checks, and a clearer safety-focused UI.
 
-> **Independent tool.** VI Mod Manager is not affiliated with, authorized by, or endorsed by any game publisher or developer. This release contains no mods, game files, or game assets, and it does not bypass DRM, license checks, or anti-cheat systems. It bundles open-source libraries; the portable build also includes the .NET runtime. See [DISCLAIMER.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/DISCLAIMER.md) and [THIRD-PARTY-NOTICES.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/THIRD-PARTY-NOTICES.md) in the repository.
+> **Independent tool.** VI Mod Manager is not affiliated with, authorized by, or endorsed by any game publisher or developer. This version and its releases contain no mods, game files, or game assets, and it does not bypass DRM, license checks, or anti-cheat systems. It bundles open-source libraries; the portable build also includes the .NET runtime. See [DISCLAIMER.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/DISCLAIMER.md) and [THIRD-PARTY-NOTICES.md](https://github.com/frame18studios/VI-Mod-Manager/blob/main/THIRD-PARTY-NOTICES.md) in the repository.
 
 ## Downloads
 
@@ -32,24 +32,24 @@ The SignPath Foundation application is still pending. Until it is approved, VI M
 
 ## Highlights in v0.2
 
-- **No artificial package limits** — archives, folders, and loose files stream to disk without compressed-size, expanded-size, per-entry, entry-count, manifest-size, or compression-ratio caps. Only structural checks that prevent ambiguous writes remain.
-- **Crash-aware deployment** — a local journal records every destructive step. On the next launch, interrupted installs are rolled back or completed, and interrupted unloads/config writes are finished safely.
+- **No artificial payload limits** — archives, folders, and loose files stream to disk without compressed-size, expanded-size, per-entry, entry-count, or compression-ratio caps. Manifest text has a generous inspection bound so a malformed archive cannot exhaust memory.
+- **Crash-aware deployment** — a local journal records every destructive step. On the next launch, interrupted installs are rolled back or completed, and interrupted unloads/config writes are finished safely. An unreadable journal is preserved and blocks destructive work until acknowledged.
 - **Package integrity before deploy** — the stored SHA-256 is verified before files are written. A package that changed after import is refused with a clear re-import message.
-- **Serialized operations** — library changes and deployments are gated so overlapping actions cannot interleave and corrupt state.
+- **Serialized operations** — library changes and deployments are gated so overlapping actions cannot interleave, and a named lock keyed to the data root refuses a second app instance using the same files.
 - **Stronger backup safety** — original files are hashed before and after copying; unload preflights every deployed file and backup, and tolerates retry after a partial interruption.
 - **Improved cache fingerprint** — length, timestamps, and cheap head/tail samples detect same-size rewrites without hashing a multi-gigabyte archive on every UI refresh.
-- **Local audit log** — deployment, recovery, and error events are written to `data/logs/vimm.log`. Nothing is transmitted and no telemetry is collected.
+- **Local audit log** — deployment, recovery, and error events are written to `data/logs/vimm.log`, rotating to three bounded archives. Nothing is transmitted and no telemetry is collected.
 - **Redesigned safety surface** — the overview explains the v0.2 guarantees, long operations show live progress, hash verification no longer blocks the UI, and Settings exposes the build version and log location.
-- **Failure-injection coverage** — tests now exercise corrupt journals, locked journals, committed installs with tampered files, missing or damaged backups, committed config recovery, simultaneous installs to one destination, wide directories, large manifests, and high entry counts.
-- **Safer recovery paths** — a temporarily locked journal is preserved instead of discarded, unload recovery re-verifies backup hashes, and committed config recovery checks the written file before updating state.
+- **Failure-injection coverage** — tests now exercise corrupt journals, locked journals, committed installs with tampered files, missing or damaged backups, committed config recovery, simultaneous installs to one destination, wide directories, large manifests, high entry counts, staging collisions, symlinked staging paths, failed generated-config updates, interrupted unloads with external edits, shared data roots, and uncapped large payloads.
+- **Safer recovery paths** — a corrupt or temporarily locked journal is preserved instead of discarded, unload recovery refuses externally changed files and re-verifies backup hashes, and generated-config updates keep a separate transaction snapshot so a failed write restores the previous generated config without disturbing the original backup.
 - **Layered core seam** — dedicated library, deployment, configuration, and profile services plus a UI-agnostic main ViewModel route every UI core operation through one testable boundary.
 - **Format-neutral target adapters** — a single local-folder adapter resolves deployment targets. There is no game detection, executable-name matching, or proprietary-format handling.
 - **Uncapped directory preview** — the target folder scan counts every top-level file and folder instead of truncating at arbitrary display limits.
 
 ## Known limits
 
-- Experimental `v0.2` release. The app is designed for local file management only: no network downloads, no auto-updater, and no telemetry.
-- Published binaries target Windows x64. Runtime data (`data/`, `mods/`, `backups/`) is created beside the EXE on first launch, or under `VIMM_DATA_ROOT` / `VMM_DATA_ROOT` if set.
+- The `v0.2` source is experimental and no public release tag has been published yet. The app is designed for local file management only: no network downloads, no auto-updater, and no telemetry.
+- Published binaries target Windows x64. Runtime data (`data/`, `mods/`, `backups/`) is created beside the EXE on first launch, or under `VIMM_DATA_ROOT` / `VMM_DATA_ROOT` if set. Only one instance can use a data root at a time.
 - The current EXEs are unsigned while the SignPath Foundation application is pending. Verify `SHA256SUMS.txt` and use Windows SmartScreen's "More info" option only if you trust the source.
 - The app validates paths and hashes, not intent. It does not scan packages for malware; only import content you have the rights to use.
 

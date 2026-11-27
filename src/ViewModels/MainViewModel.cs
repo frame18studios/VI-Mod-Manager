@@ -21,6 +21,9 @@ public sealed class MainViewModel
     public IReadOnlyList<ModRecord> Mods => Services.Library.List();
     public IReadOnlyList<ModRecord> LoadOrder => Services.Library.LoadOrder();
     public string? RecoveryWarning => Services.Deployment.RecoveryWarning;
+    public bool HasCorruptJournal => Services.Deployment.HasCorruptJournal;
+
+    public void AcknowledgeCorruptJournal() => Services.Deployment.AcknowledgeCorruptJournal();
 
     public ModRecord? Get(string? id) => Services.Library.Get(id);
     public JsonObject? ManifestFor(ModRecord mod) => Services.Library.ManifestFor(mod);

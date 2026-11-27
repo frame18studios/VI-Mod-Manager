@@ -28,6 +28,12 @@ public static class Packages
     public const string ManifestFileName = "vmm-manifest.json";
     public const string LegacyManifestFileName = "vi-mod.json";
 
+    /// <summary>
+    /// Generous ceiling for manifest text only. Payload files are streamed and never capped, but
+    /// inspection must not let a malicious directory entry consume unlimited memory.
+    /// </summary>
+    public const long MaxManifestMetadataBytes = 128L * 1024 * 1024;
+
     public static string? FindManifestFile(string directory)
     {
         string current = Path.Combine(directory, ManifestFileName);
@@ -71,8 +77,14 @@ public static class Packages
             }
 
             string manifestName = manifestEntry.FullName;
+            if (manifestEntry.Length > MaxManifestMetadataBytes)
+            {
+                throw new PackageException(
+                    $"{manifestName} is too large to inspect safely; the maximum is {MaxManifestMetadataBytes} bytes. Payload sizes are not limited.");
+            }
+
             using var stream = manifestEntry.Open();
-            string text = ReadText(stream);
+            string text = ReadText(stream, manifestName);
             try
             {
                 contents.Manifest = JsonNode.Parse(text) as JsonObject
@@ -123,14 +135,20 @@ public static class Packages
 
     /// <summary>
     /// Streams one ZIP entry to disk and returns the number of bytes written. No artificial size cap
-    /// is applied: packages may contain arbitrarily large data assets.
+    /// is applied: packages may contain arbitrarily large data assets. Callers staging a write into
+    /// the target folder pass <paramref name="createNew"/> so an existing file or link is never
+    /// truncated or followed.
     /// </summary>
-    public static long ExtractEntryToFile(ZipArchiveEntry entry, string destination)
+    public static long ExtractEntryToFile(ZipArchiveEntry entry, string destination, bool createNew = false)
     {
         try
         {
             using var input = entry.Open();
-            using var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None);
+            using var output = new FileStream(
+                destination,
+                createNew ? FileMode.CreateNew : FileMode.Create,
+                FileAccess.Write,
+                FileShare.None);
             var buffer = new byte[81920];
             long total = 0;
             int read;
@@ -166,8 +184,15 @@ public static class Packages
     {
         try
         {
+            var info = new FileInfo(path);
+            if (info.Length > MaxManifestMetadataBytes)
+            {
+                throw new PackageException(
+                    $"The manifest is too large to inspect safely; the maximum is {MaxManifestMetadataBytes} bytes. Payload sizes are not limited.");
+            }
+
             using var stream = File.OpenRead(path);
-            string text = ReadText(stream);
+            string text = ReadText(stream, path);
             return JsonNode.Parse(text) as JsonObject
                 ?? throw new PackageException($"{ManifestFileName} must contain a JSON object.");
         }
@@ -331,11 +356,9 @@ public static class Packages
             throw new PackageException("Package folder not found.");
         }
 
-        string temp = destinationZip + ".packing";
-        if (File.Exists(temp))
-        {
-            File.Delete(temp);
-        }
+        string temp = Path.Combine(
+            Path.GetDirectoryName(destinationZip)!,
+            $".{Path.GetFileName(destinationZip)}-{Guid.NewGuid():N}.packing");
 
         // Build explicitly from the safe list: ZipFile.CreateFromDirectory would follow
         // reparse points and could include files outside the mod folder.
@@ -376,16 +399,16 @@ public static class Packages
             throw new PackageException("The file name cannot be deployed safely.");
         }
 
-        string temp = destinationZip + ".packing";
-        if (File.Exists(temp))
-        {
-            File.Delete(temp);
-        }
+        string temp = Path.Combine(
+            Path.GetDirectoryName(destinationZip)!,
+            $".{Path.GetFileName(destinationZip)}-{Guid.NewGuid():N}.packing");
 
         using (var archive = ZipFile.Open(temp, ZipArchiveMode.Create))
         {
             using var input = File.OpenRead(file);
-            using var output = archive.CreateEntry(name, CompressionLevel.Optimal).Open();
+            // Loose assets can already be compressed and may be enormous; avoid a pointless
+            // second compression pass. ZIP and folder packages keep their existing behavior.
+            using var output = archive.CreateEntry(name, CompressionLevel.NoCompression).Open();
             input.CopyTo(output);
         }
 
@@ -435,10 +458,24 @@ public static class Packages
         }
     }
 
-    private static string ReadText(Stream stream)
+    private static string ReadText(Stream stream, string label)
     {
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-        return reader.ReadToEnd();
+        var text = new StringBuilder();
+        var buffer = new char[81920];
+        int read;
+        while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            if (text.Length + read > MaxManifestMetadataBytes)
+            {
+                throw new PackageException(
+                    $"{label} is too large to inspect safely; the maximum is {MaxManifestMetadataBytes} bytes. Payload sizes are not limited.");
+            }
+
+            text.Append(buffer, 0, read);
+        }
+
+        return text.ToString();
     }
 }
 

@@ -24,11 +24,7 @@ public sealed class AppServices
 
     public AppServices(string? root = null)
     {
-        Root = Path.GetFullPath(
-            root
-            ?? Environment.GetEnvironmentVariable("VMM_DATA_ROOT")
-            ?? Environment.GetEnvironmentVariable("VIMM_DATA_ROOT")
-            ?? AppContext.BaseDirectory);
+        Root = ResolveRoot(root);
         DataDir = Path.Combine(Root, "data");
         ModsDir = Path.Combine(Root, "mods");
         BackupsDir = Path.Combine(Root, "backups");
@@ -44,4 +40,10 @@ public sealed class AppServices
         Workspace = new WorkspaceServices(Manager, new TargetAdapterRegistry(Targets));
         ViewModel = new MainViewModel(Workspace);
     }
+
+    public static string ResolveRoot(string? root = null) => Path.GetFullPath(
+        root
+        ?? Environment.GetEnvironmentVariable("VMM_DATA_ROOT")
+        ?? Environment.GetEnvironmentVariable("VIMM_DATA_ROOT")
+        ?? AppContext.BaseDirectory);
 }

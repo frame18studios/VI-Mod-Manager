@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ViModManager.Models;
@@ -46,6 +47,11 @@ public sealed class ModManager
     /// surfaces this so the user knows why a deployment is being refused.
     /// </summary>
     public string? RecoveryWarning { get; private set; }
+
+    /// <summary>True when an unreadable journal is preserving an unresolved transaction.</summary>
+    public bool HasCorruptJournal { get; private set; }
+
+    public string? CorruptJournalPath => HasCorruptJournal ? _journal.FilePath : null;
 
     public ModManager(
         JsonStore<ModDatabase> store,
@@ -120,16 +126,42 @@ public sealed class ModManager
     }
 
     /// <summary>
+    /// Explicit user acknowledgement that a preserved, unreadable journal has been inspected. The
+    /// file is removed only after this call; no automatic operation can dismiss the warning.
+    /// </summary>
+    public void AcknowledgeCorruptJournal()
+    {
+        using var operation = EnterOperation();
+        if (!HasCorruptJournal)
+        {
+            return;
+        }
+
+        JournalReadResult read = _journal.ReadDetailed();
+        if (read.Status != JournalReadStatus.Corrupt)
+        {
+            RecoverPendingOperation();
+            return;
+        }
+
+        _journal.Delete();
+        HasCorruptJournal = false;
+        RecoveryWarning = null;
+        AppLog.Warn($"Unreadable journal acknowledged and removed: {_journal.FilePath}");
+        AddHistory("Recovery acknowledged", "Unreadable transaction record removed");
+    }
+
+    /// <summary>
     /// Resolves the single pending journal left by a crash or forced shutdown. Installs that had
     /// not committed are rolled back; uninstalls and config writes are completed because their
     /// intent is already durable. The journal remains in place if recovery cannot finish safely.
     /// </summary>
     private void RecoverPendingOperation()
     {
-        DeploymentJournal? journal;
+        JournalReadResult read;
         try
         {
-            journal = _journal.Read();
+            read = _journal.ReadDetailed();
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -140,12 +172,24 @@ public sealed class ModManager
             return;
         }
 
-        if (journal is null)
+        if (read.Status == JournalReadStatus.Corrupt)
+        {
+            HasCorruptJournal = true;
+            RecoveryWarning =
+                $"The transaction record at {_journal.FilePath} is unreadable and was preserved. An interrupted operation may have changed files already; deployments and unloads are blocked. Review that file and the target folder, then acknowledge the warning to continue: "
+                + read.Error;
+            AppLog.Error(RecoveryWarning);
+            return;
+        }
+
+        HasCorruptJournal = false;
+        if (read.Status == JournalReadStatus.Missing)
         {
             RecoveryWarning = null;
             return;
         }
 
+        DeploymentJournal journal = read.Journal!;
         try
         {
             switch (journal.Operation)
@@ -231,7 +275,7 @@ public sealed class ModManager
     {
         if (journal.Phase == DeploymentJournal.PreparePhase)
         {
-            var (_, failures) = RestoreUninstallSteps(journal.Steps, journal.TargetDir);
+            var (_, failures) = RestoreUninstallSteps(journal.Steps, journal.TargetDir, strict: true);
             if (failures.Count > 0)
             {
                 throw new InvalidOperationException(string.Join(" ", failures));
@@ -869,13 +913,13 @@ public sealed class ModManager
                     journal.Steps.Add(record);
                     _journal.Write(journal);
 
-                    string temp = destination + ".vmm-tmp";
+                    string temp = StagingPath(root, destination, "payload");
                     try
                     {
                         // Revalidate right before each write: shortens the window for a link swap
                         // between the initial check and the actual filesystem operation.
                         destination = Paths.ResolveWithin(root, file.Destination);
-                        Packages.ExtractEntryToFile(entry, temp);
+                        Packages.ExtractEntryToFile(entry, temp, createNew: true);
 
                         destination = Paths.ResolveWithin(root, file.Destination);
                         File.Move(temp, destination, true);
@@ -1003,6 +1047,7 @@ public sealed class ModManager
                 root,
                 backupRoot,
                 backupExisting: existing is null,
+                snapshotExisting: existing is not null,
                 journal: journal,
                 existing: existing)
                 ?? throw new InvalidOperationException("The config file could not be written.");
@@ -1161,7 +1206,7 @@ public sealed class ModManager
         _journal.Write(journal);
         AppLog.Info($"Unload started for '{mod.Name}' ({mod.Id}) from {root}.");
 
-        var (restored, failures) = RestoreUninstallSteps(journal.Steps, root);
+        var (restored, failures) = RestoreUninstallSteps(journal.Steps, root, strict: true);
         if (failures.Count > 0)
         {
             RecoveryWarning =
@@ -1271,10 +1316,26 @@ public sealed class ModManager
         return problems;
     }
 
+    /// <summary>
+    /// Fail closed when a target file no longer matches the hash recorded at deployment. Recovery
+    /// must never overwrite or delete a change made outside VI Mod Manager.
+    /// </summary>
+    private static void VerifyExpectedDeployment(string actual, InstalledFile file, string destination)
+    {
+        if (string.IsNullOrWhiteSpace(file.InstalledHash)
+            || !string.Equals(actual, file.InstalledHash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new IOException(
+                $"{file.Destination}: changed outside VI Mod Manager; refusing to overwrite {destination}. " +
+                "Restore the expected content and retry recovery.");
+        }
+    }
+
     /// <summary>Restores originals or deletes files that did not exist before deployment.</summary>
     private (int Restored, List<string> Failures) RestoreUninstallSteps(
         IEnumerable<InstalledFile> files,
-        string root)
+        string root,
+        bool strict = false)
     {
         int restored = 0;
         var failures = new List<string>();
@@ -1302,23 +1363,33 @@ public sealed class ModManager
                         continue;
                     }
 
-                    if (File.Exists(destination)
-                        && !string.IsNullOrWhiteSpace(file.BackupHash)
-                        && string.Equals(
-                            Hashing.Sha256File(destination),
-                            file.BackupHash,
-                            StringComparison.OrdinalIgnoreCase))
+                    if (File.Exists(destination))
                     {
-                        // A previous attempt already restored this file.
-                        continue;
+                        string actual = Hashing.Sha256File(destination);
+                        if (!string.IsNullOrWhiteSpace(file.BackupHash)
+                            && string.Equals(actual, file.BackupHash, StringComparison.OrdinalIgnoreCase))
+                        {
+                            // A previous attempt already restored this file.
+                            continue;
+                        }
+
+                        if (strict)
+                        {
+                            VerifyExpectedDeployment(actual, file, destination);
+                        }
                     }
 
                     Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                    File.Copy(backupPath, destination, true);
+                    ReplaceFromBackup(backupPath, file.BackupHash, destination, root, "restore");
                     restored++;
                 }
                 else if (File.Exists(destination))
                 {
+                    if (strict)
+                    {
+                        VerifyExpectedDeployment(Hashing.Sha256File(destination), file, destination);
+                    }
+
                     File.Delete(destination);
                 }
             }
@@ -1344,27 +1415,25 @@ public sealed class ModManager
             try
             {
                 string destination = Paths.ResolveWithin(targetDir, file.Destination);
-                if (!string.IsNullOrWhiteSpace(file.Backup))
+                string? snapshot = !string.IsNullOrWhiteSpace(file.TransactionBackup)
+                    ? Paths.ResolveWithin(BackupsDir, file.TransactionBackup!)
+                    : null;
+                string? backup = !string.IsNullOrWhiteSpace(file.Backup) && snapshot is null
+                    ? Paths.ResolveWithin(BackupsDir, file.Backup!)
+                    : null;
+                string? hash = snapshot is not null ? file.TransactionBackupHash : file.BackupHash;
+
+                if (snapshot is not null || backup is not null)
                 {
-                    string backup = Paths.ResolveWithin(BackupsDir, file.Backup!);
-                    if (!File.Exists(backup))
+                    string source = snapshot ?? backup!;
+                    if (!File.Exists(source))
                     {
                         failures.Add($"{file.Destination}: backup is missing.");
                         continue;
                     }
 
-                    if (!string.IsNullOrWhiteSpace(file.BackupHash)
-                        && !string.Equals(
-                            Hashing.Sha256File(backup),
-                            file.BackupHash,
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        failures.Add($"{file.Destination}: backup is damaged.");
-                        continue;
-                    }
-
                     Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                    File.Copy(backup, destination, true);
+                    ReplaceFromBackup(source, hash, destination, targetDir, "rollback");
                 }
                 else if (File.Exists(destination))
                 {
@@ -1387,6 +1456,7 @@ public sealed class ModManager
         string targetDir,
         string backupRoot,
         bool backupExisting,
+        bool snapshotExisting = false,
         List<InstalledFile>? transaction = null,
         DeploymentJournal? journal = null,
         InstalledFile? existing = null)
@@ -1423,6 +1493,32 @@ public sealed class ModManager
             backupHash = existing.BackupHash;
         }
 
+        // A generated config has no original backup. Snapshot the current generated file for this
+        // update transaction so a failed write can restore it instead of deleting it.
+        string? transactionBackup = null;
+        string? transactionBackupHash = null;
+        if (snapshotExisting && File.Exists(destination))
+        {
+            string snapshot = Paths.ResolveWithin(
+                backupRoot,
+                $"transaction-{Guid.NewGuid():N}/{safeRelative}");
+            Directory.CreateDirectory(Path.GetDirectoryName(snapshot)!);
+            string currentHash = Hashing.Sha256File(destination);
+            using (var input = new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var output = new FileStream(snapshot, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                input.CopyTo(output);
+                output.Flush(true);
+            }
+
+            transactionBackup = Path.GetRelativePath(BackupsDir, snapshot).Replace('\\', '/');
+            transactionBackupHash = Hashing.Sha256File(snapshot);
+            if (!string.Equals(currentHash, transactionBackupHash, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new IOException($"Config snapshot verification failed for {safeRelative}.");
+            }
+        }
+
         var schema = ModConfig.ParseSchema(manifest["settings"] ?? manifest["variables"]);
         var values = ModConfig.BuildValues(schema, mod.Config);
         var entry = new InstalledFile
@@ -1430,6 +1526,8 @@ public sealed class ModManager
             Destination = safeRelative,
             Backup = backup,
             BackupHash = backupHash,
+            TransactionBackup = transactionBackup,
+            TransactionBackupHash = transactionBackupHash,
             Kind = "config",
         };
 
@@ -1442,11 +1540,11 @@ public sealed class ModManager
             _journal.Write(journal);
         }
 
-        string temp = destination + ".vmm-tmp";
+        string temp = StagingPath(targetDir, destination, "config");
         try
         {
             destination = Paths.ResolveWithin(targetDir, safeRelative);
-            File.WriteAllText(temp, values.ToJsonString(ConfigJson) + Environment.NewLine);
+            WriteNewText(temp, values.ToJsonString(ConfigJson) + Environment.NewLine);
             destination = Paths.ResolveWithin(targetDir, safeRelative);
             File.Move(temp, destination, true);
             entry.InstalledHash = Hashing.Sha256File(destination);
@@ -1471,6 +1569,70 @@ public sealed class ModManager
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // A leftover temp file is harmless compared with masking the original failure.
+        }
+    }
+
+    /// <summary>
+    /// Builds a unique staging path beside the destination. The parent directory is resolved again
+    /// to reject reparse points, and CreateNew below refuses an existing file or link at the path.
+    /// </summary>
+    private static string StagingPath(string root, string destination, string label)
+    {
+        string directory = Path.GetDirectoryName(destination)!;
+        string relativeDirectory = Path.GetRelativePath(root, directory).Replace('\\', '/');
+        _ = Paths.ResolveWithin(root, relativeDirectory + "/.vmm-stage-probe");
+
+        for (int attempt = 0; attempt < 8; attempt++)
+        {
+            string candidate = Path.Combine(directory, $".vmm-{label}-{Guid.NewGuid():N}.tmp");
+            if (!File.Exists(candidate) && !Directory.Exists(candidate) && !Paths.IsReparsePoint(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new IOException("A unique staging file could not be created beside the destination.");
+    }
+
+    /// <summary>Writes a new staging file without ever truncating an existing path.</summary>
+    private static void WriteNewText(string path, string text)
+    {
+        using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+        writer.Write(text);
+        writer.Flush();
+        stream.Flush(true);
+    }
+
+    /// <summary>Copies a verified backup into a unique staging file, then replaces the destination.</summary>
+    private static void ReplaceFromBackup(
+        string backup,
+        string? expectedHash,
+        string destination,
+        string root,
+        string label)
+    {
+        if (!string.IsNullOrWhiteSpace(expectedHash)
+            && !string.Equals(Hashing.Sha256File(backup), expectedHash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new IOException("The backup does not match its recorded hash.");
+        }
+
+        string staging = StagingPath(root, destination, label);
+        try
+        {
+            using (var input = new FileStream(backup, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var output = new FileStream(staging, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                input.CopyTo(output);
+                output.Flush(true);
+            }
+
+            File.Move(staging, destination, true);
+        }
+        finally
+        {
+            TryDelete(staging);
         }
     }
 

@@ -28,16 +28,16 @@
 
 ## Download
 
-Grab one of the two standalone Windows x64 executables from the [latest release](https://github.com/frame18studios/VI-Mod-Manager/releases/latest). No installer or archive is required — just run the EXE. They are also available directly in the [`publish/` folder](publish/) of this repository.
+Grab one of the two standalone Windows x64 executables from the [releases page](https://github.com/frame18studios/VI-Mod-Manager/releases/latest). No installer or archive is required — just run the EXE. The [`publish/` folder](publish/) in this repository holds older reference artifacts, not a published release.
 
 | File | Size | Requirements |
 | --- | --- | --- |
 | `ViModManager.exe` | ~45 MB | None — self-contained, includes the .NET 10 runtime. |
 | `ViModManager-light.exe` | ~25 MB | [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) must already be installed. |
 
-The `v0.2` source is versioned in [RELEASE_NOTES.md](RELEASE_NOTES.md); the committed `publish/` EXEs are the older build and will be replaced by CI on a `v*` tag. Current EXEs are unsigned, so Windows SmartScreen may show an "unknown publisher" prompt on first launch. Verify the download against `SHA256SUMS.txt` in the same release.
+The `v0.2` source is described in [RELEASE_NOTES.md](RELEASE_NOTES.md); no `v0.2` tag or release has been published yet. The committed `publish/` EXEs are older unsigned artifacts and are not the current build. CI rebuilds both EXEs from source when a `v*` tag is pushed. All published EXEs are unsigned, so Windows SmartScreen may show an "unknown publisher" prompt on first launch. Verify any download against `SHA256SUMS.txt` from the same release.
 
-> **Where to put it:** Run the EXE from any writable folder. Avoid `Program Files` or other protected locations. On first launch the app creates `data/`, `mods/`, and `backups/` beside the EXE, or under `VIMM_DATA_ROOT` (or `VMM_DATA_ROOT`) if that variable is set.
+> **Where to put it:** Run the EXE from any writable folder. Avoid `Program Files` or other protected locations. On first launch the app creates `data/`, `mods/`, and `backups/` beside the EXE, or under `VIMM_DATA_ROOT` (or `VMM_DATA_ROOT`) if that variable is set. Only one instance can use a given data root at a time; a second launch is refused until the first is closed.
 
 ---
 
@@ -50,7 +50,7 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation.
 
 This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
 
-The SignPath Foundation application is still pending, so `v0.2` EXEs are unsigned until it is approved. Once approved, future release EXEs will be signed through SignPath.io, and `SHA256SUMS.txt` will be generated after signing.
+The SignPath Foundation application is still pending, so published EXEs are unsigned until it is approved. Once approved, future release EXEs will be signed through SignPath.io, and `SHA256SUMS.txt` will be generated after signing.
 
 ---
 
@@ -75,8 +75,8 @@ Try the workflow safely with [`examples/example-package-demo.zip`](examples/exam
 - **Workspace profiles** — save and restore named snapshots of enabled packages and configuration values.
 - **Customization** — 7 curated themes, a circular palette-token color selector, corner styles (`Sharp`, `Balanced`, `Rounded`, `Soft`), and a live text-size control.
 - **Path safety** — rejects empty, absolute, drive-prefixed, `..`-traversal, reserved, and duplicate destinations, and skips symlinks and junctions.
-- **Uncapped packages** — large archives and assets stream to disk with no artificial compressed-size, expanded-size, per-entry, entry-count, manifest-size, or ratio caps.
-- **Crash-aware operations** — a local journal resolves interrupted deploys on the next launch; overlapping operations are serialized.
+- **Uncapped payloads** — large archives and assets stream to disk with no compressed-size, expanded-size, per-entry, entry-count, or ratio caps. Manifest text has a generous inspection bound so a malformed archive cannot exhaust memory.
+- **Crash-aware operations** — a local journal resolves interrupted deploys on the next launch; a corrupt journal blocks destructive work until acknowledged, and external edits are never overwritten.
 - **No package execution** — payload files are copied as opaque bytes; manifests are read as plain JSON.
 - **Local only** — no runtime telemetry, no network calls, no auto-updater, and no account requirement. A local audit log is written under `data/logs`; build-time tooling is described in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 - **Testable core seam** — library, deployment, configuration, and profile services sit behind a small ViewModel boundary, so core behavior can be tested without the UI.
@@ -90,12 +90,12 @@ Try the workflow safely with [`examples/example-package-demo.zip`](examples/exam
 | --- | --- |
 | **Target scope** | Files are written only into the target folder you select, resolved through a generic folder adapter. The app's own settings, library, and backups live in a separate data root. |
 | **Path validation** | Every relative path is normalized and must resolve inside the target folder. Absolute paths, drive prefixes, `.`/`..` segments, Windows-reserved names, and symlinks or junctions in existing path components are rejected. Duplicate destinations, including a collision with the generated config file, are rejected case-insensitively. |
-| **Archive structure** | ZIPs are checked only for structural ambiguity, such as duplicate entry names. There are no size, entry-count, manifest-size, or compression-ratio caps; payload bytes stream to disk. |
+| **Archive structure** | ZIPs are checked for structural ambiguity, such as duplicate entry names. Payload bytes stream to disk with no size, entry-count, or compression-ratio caps; only manifest text is bounded during inspection. |
 | **Backups** | Before replacing an existing file, the original is copied to `backups/<install-id>/` and hashed. Unload preflights every file and refuses to clear deployment state if a required backup is missing or damaged. |
 | **Integrity** | The package SHA-256 is verified before deployment. Deployed files are hashed with SHA-256; on unload, backups are restored only if the deployed file has not been modified externally. |
-| **Crash recovery** | A local deployment journal records destructive steps. Interrupted installs are rolled back or completed and interrupted unloads/config writes are finished on the next launch. |
-| **Concurrency** | One operation at a time owns library and deployment state, so overlapping UI actions cannot interleave writes. |
-| **Auditability** | Local-only events are appended to `data/logs/vimm.log`. Nothing is uploaded or sent to any service. |
+| **Crash recovery** | A local deployment journal records destructive steps. Interrupted installs are rolled back or completed and interrupted unloads/config writes are finished on the next launch. An unreadable journal is preserved and blocks destructive work until you acknowledge it; recovery refuses to overwrite files changed outside the app. |
+| **Concurrency** | One operation at a time owns library and deployment state, and a named lock keyed to the data root allows only one app instance to use that root. Overlapping UI actions and a second process cannot interleave writes. |
+| **Auditability** | Local-only events are appended to `data/logs/vimm.log`, rotating to three bounded archives. Nothing is uploaded or sent to any service. |
 | **No execution** | The app does not run package code, scripts, installers, or payload content; opening a folder in File Explorer is a separate user-initiated action. |
 | **No privilege escalation** | The app runs as the current user and does not request administrator rights. |
 | **Content trust** | The app validates paths and hashes, not intent. It does not scan for malware. Only import packages from sources you trust. |
@@ -140,7 +140,7 @@ dotnet test tests/ViModManager.Tests.csproj -c Release --nologo
 dotnet run --project src/ViModManager.csproj
 ```
 
-Release builds place exactly two standalone EXEs and `SHA256SUMS.txt` in the flat `publish/` folder. Those files are committed here so you can also download them directly from the repository. Full instructions are in [BUILDING.md](BUILDING.md).
+CI stages exactly two standalone EXEs and `SHA256SUMS.txt` in a flat `publish/` folder and attaches them to a `v*` tag. The committed `publish/` folder holds older reference artifacts; it is not a current download source. Full instructions are in [BUILDING.md](BUILDING.md).
 
 ---
 

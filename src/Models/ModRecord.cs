@@ -43,8 +43,19 @@ public sealed class AutoFile
 public sealed class InstalledFile
 {
     public string Destination { get; set; } = "";
+
+    /// <summary>The original file as it existed before the first deployment, if any.</summary>
     public string? Backup { get; set; }
     public string? BackupHash { get; set; }
+
+    /// <summary>
+    /// A snapshot of the currently generated file taken for one config-update transaction. It is
+    /// separate from <see cref="Backup"/> so a failed update restores the last working config
+    /// instead of deleting it when no original file existed.
+    /// </summary>
+    public string? TransactionBackup { get; set; }
+    public string? TransactionBackupHash { get; set; }
+
     public string InstalledHash { get; set; } = "";
     public string Kind { get; set; } = "file";
 }

@@ -12,6 +12,9 @@ namespace ViModManager.Core;
 /// </summary>
 public static class AppLog
 {
+    private const long MaxLogBytes = 5L * 1024 * 1024;
+    private const int RetainedArchives = 3;
+
     private static readonly object Gate = new();
     private static string? _file;
 
@@ -58,12 +61,49 @@ public static class AppLog
         {
             lock (Gate)
             {
+                var info = new FileInfo(path);
+                if (info.Exists && info.Length > MaxLogBytes)
+                {
+                    Rotate(path);
+                }
+
                 File.AppendAllText(path, line, Encoding.UTF8);
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // A log failure must never break a deployment.
+        }
+    }
+
+    /// <summary>Keeps a small local archive instead of letting one file grow forever.</summary>
+    private static void Rotate(string path)
+    {
+        TryDelete($"{path}.{RetainedArchives}");
+        for (int index = RetainedArchives - 1; index >= 1; index--)
+        {
+            string source = $"{path}.{index}";
+            if (File.Exists(source))
+            {
+                File.Move(source, $"{path}.{index + 1}", true);
+            }
+        }
+
+        File.Move(path, $"{path}.1", true);
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Rotation is best-effort; the next write still succeeds.
         }
     }
 }

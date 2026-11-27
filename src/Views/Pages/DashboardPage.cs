@@ -149,7 +149,19 @@ public partial class MainWindow
         Ui.Clear(_healthContainer);
         var checks = new List<(string Text, string? ActionLabel, Action? Action, bool IsWarning)>();
 
-        if (_viewModel.RecoveryWarning is { } recovery)
+        if (_viewModel.HasCorruptJournal)
+        {
+            checks.Add((
+                "An unreadable transaction record needs acknowledgement: " + _viewModel.RecoveryWarning,
+                "Acknowledge",
+                () =>
+                {
+                    _viewModel.AcknowledgeCorruptJournal();
+                    RefreshAll();
+                },
+                true));
+        }
+        else if (_viewModel.RecoveryWarning is { } recovery)
         {
             Action openLog = () =>
             {

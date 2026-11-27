@@ -30,6 +30,8 @@ public interface ILibraryService
 public interface IDeploymentService
 {
     string? RecoveryWarning { get; }
+    bool HasCorruptJournal { get; }
+    void AcknowledgeCorruptJournal();
     Task<int> DeployAsync(ModRecord mod, string targetDir);
     Task<LoadOutcome> DeploySelectedAsync(ModRecord mod, string targetDir);
     Task<LoadSummary> DeployAllAsync(string targetDir);
@@ -112,6 +114,8 @@ internal sealed class DeploymentService : IDeploymentService
     }
 
     public string? RecoveryWarning => _manager.RecoveryWarning;
+    public bool HasCorruptJournal => _manager.HasCorruptJournal;
+    public void AcknowledgeCorruptJournal() => _manager.AcknowledgeCorruptJournal();
     public Task<int> DeployAsync(ModRecord mod, string targetDir) => _manager.InstallAsync(mod, targetDir);
     public Task<LoadOutcome> DeploySelectedAsync(ModRecord mod, string targetDir) => _manager.LoadModAsync(mod, targetDir);
     public Task<LoadSummary> DeployAllAsync(string targetDir) => _manager.LoadAllAsync(targetDir);

@@ -81,14 +81,38 @@ public sealed class JsonStore<T> where T : class, new()
 
     private void Write(T value)
     {
-        var temp = FilePath + ".tmp";
-        using (var stream = File.Create(temp))
+        string temp = Path.Combine(
+            Path.GetDirectoryName(FilePath)!,
+            $".{Path.GetFileName(FilePath)}-{Guid.NewGuid():N}.tmp");
+        try
         {
-            JsonSerializer.Serialize(stream, value, Options);
-            stream.Flush(true);
-        }
+            using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                JsonSerializer.Serialize(stream, value, Options);
+                stream.Flush(true);
+            }
 
-        File.Move(temp, FilePath, true);
+            File.Move(temp, FilePath, true);
+        }
+        finally
+        {
+            TryDelete(temp);
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Never mask the original failure with a cleanup failure.
+        }
     }
 
     public void Save()
