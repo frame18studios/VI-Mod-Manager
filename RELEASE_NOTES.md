@@ -1,6 +1,6 @@
 # VI Mod Manager — v0.2 (Experimental)
 
-Status: v0.2 source prepared; no release tag or GitHub Release has been published yet.
+Status: v0.2 experimental. GitHub Releases are built from tagged `v*` commits; this document is used as the release description.
 
 ## Overview
 
@@ -19,7 +19,7 @@ Two standalone Windows x64 executables are produced by the release workflow; the
 
 The committed `publish/` folder still contains the older unsigned artifacts from the previous build; the CI workflow rebuilds both EXEs from this source on a `v*` tag and publishes `SHA256SUMS.txt` with them. Verify a download before running it.
 
-## Code signing policy
+## Planned code signing policy
 
 Free code signing provided by SignPath.io, certificate by SignPath Foundation.
 
@@ -48,7 +48,7 @@ The SignPath Foundation application is still pending. Until it is approved, VI M
 
 ## Known limits
 
-- The `v0.2` source is experimental and no public release tag has been published yet. The app is designed for local file management only: no network downloads, no auto-updater, and no telemetry.
+- The `v0.2` source is experimental. The app is designed for local file management only: no network downloads, no auto-updater, and no telemetry.
 - Grand Theft Auto VI is mentioned only as a project direction. v0.2 does not claim or provide compatibility, support, or endorsement for that title, and it ships no game-specific modding features.
 - Published binaries target Windows x64. Runtime data (`data/`, `mods/`, `backups/`) is created beside the EXE on first launch, or under `VIMM_DATA_ROOT` / `VMM_DATA_ROOT` if set. Only one instance can use a data root at a time.
 - The current EXEs are unsigned while the SignPath Foundation application is pending. Verify `SHA256SUMS.txt` and use Windows SmartScreen's "More info" option only if you trust the source.

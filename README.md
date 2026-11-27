@@ -42,13 +42,13 @@ Grab one of the two standalone Windows x64 executables from the [releases page](
 | `ViModManager.exe` | ~45 MB | None — self-contained, includes the .NET 10 runtime. |
 | `ViModManager-light.exe` | ~25 MB | [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) must already be installed. |
 
-The `v0.2` source is described in [RELEASE_NOTES.md](RELEASE_NOTES.md); no `v0.2` tag or release has been published yet. The committed `publish/` EXEs are older unsigned artifacts and are not the current build. CI rebuilds both EXEs from source when a `v*` tag is pushed. All published EXEs are unsigned, so Windows SmartScreen may show an "unknown publisher" prompt on first launch. Verify any download against `SHA256SUMS.txt` from the same release.
+The `v0.2` source is described in [RELEASE_NOTES.md](RELEASE_NOTES.md). GitHub Releases are the authoritative download source; CI rebuilds both EXEs from source when a `v*` tag is pushed. The committed `publish/` EXEs are older unsigned artifacts and are not the current build. Published EXEs are unsigned while the SignPath application is pending, so Windows SmartScreen may show an "unknown publisher" prompt on first launch. Verify any download against `SHA256SUMS.txt` from the same release.
 
 > **Where to put it:** Run the EXE from any writable folder. Avoid `Program Files` or other protected locations. On first launch the app creates `data/`, `mods/`, and `backups/` beside the EXE, or under `VIMM_DATA_ROOT` (or `VMM_DATA_ROOT`) if that variable is set. Only one instance can use a given data root at a time; a second launch is refused until the first is closed.
 
 ---
 
-## Code signing policy
+## Planned code signing policy
 
 Free code signing provided by SignPath.io, certificate by SignPath Foundation.
 
